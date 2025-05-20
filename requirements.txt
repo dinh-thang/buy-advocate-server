@@ -1,0 +1,2 @@
+fastapi[standard]
+supabase==2.15.1
