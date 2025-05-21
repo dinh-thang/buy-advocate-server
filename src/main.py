@@ -4,6 +4,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from src.routers.project_router import project_router
+from src.routers.admin_router import admin_router
+
 
 app = FastAPI()
 api_router = APIRouter()
@@ -32,6 +34,7 @@ async def ping():
 
 app.include_router(api_router, prefix="/api")
 app.include_router(project_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

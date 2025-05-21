@@ -5,7 +5,7 @@ from supabase import Client
 from uuid import UUID
 
 from src.services.supabase_service import get_supabase_client
-from src.schemas.project import Project, ProjectCreate, ProjectBase
+from src.schemas.project import Project, ProjectCreate, ProjectBase, ProjectUpdate
 from src.config import logger
 
 
@@ -15,21 +15,44 @@ project_router = APIRouter(
 )
 
 
+# get a project by id, this should be t
 @project_router.get("/{project_id}")
 async def get_project(
     project_id: UUID4,
     supabase: Client = Depends(get_supabase_client)
 ):
     response = await supabase.table("projects").select(
-        "*, site_types(*, site_types_filters(filters(*)))"
+        """
+        *,
+        site_types(
+            *,
+            site_type_market_status_filters(
+                *,
+                filters(*)
+            )
+        ),
+        market_status(*),
+        user_filters(*)
+        """
     ).eq("id", project_id).execute()
 
     if not response.data:
         logger.error(f"Project not found with id: {project_id}")
         raise HTTPException(status_code=404, detail="Project not found")
-    return response.data[0]
+    
+    project_data = response.data[0]
+    
+    # Filter the site_type_market_status_filters to only include those matching the project's market_status_id
+    if project_data.get("site_types", {}).get("site_type_market_status_filters"):
+        project_data["site_types"]["site_type_market_status_filters"] = [
+            filter_data for filter_data in project_data["site_types"]["site_type_market_status_filters"]
+            if filter_data.get("market_status_id") == str(project_data["market_status_id"])
+        ]
+    
+    return project_data
 
 
+# get all projects of a user
 @project_router.get("/")
 async def get_all_projects(
     user_id: UUID4 = Query(None, description="Filter by user ID"),
@@ -77,13 +100,16 @@ async def create_project(
 @project_router.patch("/{project_id}")
 async def update_project(
     project_id: UUID4,
-    project: ProjectBase,
+    project: ProjectUpdate,
     supabase: Client = Depends(get_supabase_client)
 ):
     try:
         # Convert the project data to a dictionary and ensure UUIDs are strings
-        project_data = project.model_dump(exclude={"id", "created_at"})
+        project_data = project.model_dump(exclude_unset=True)
         
+        if not project_data:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+            
         for key, value in project_data.items():
             if isinstance(value, UUID):
                 project_data[key] = str(value)
