@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from pydantic import UUID4, Field
 from src.schemas import BaseSchema

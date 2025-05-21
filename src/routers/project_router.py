@@ -15,7 +15,6 @@ project_router = APIRouter(
 )
 
 
-# get a project by id, this should be t
 @project_router.get("/{project_id}")
 async def get_project(
     project_id: UUID4,
@@ -23,15 +22,11 @@ async def get_project(
 ):
     response = await supabase.table("projects").select(
         """
-        *,
-        site_types(
-            *,
-            site_type_market_status_filters(
-                *,
-                filters(*)
-            )
-        ),
+        id,
+        created_at,
+        title,
         market_status(*),
+        site_types(*),
         user_filters(*)
         """
     ).eq("id", project_id).execute()
@@ -40,26 +35,17 @@ async def get_project(
         logger.error(f"Project not found with id: {project_id}")
         raise HTTPException(status_code=404, detail="Project not found")
     
-    project_data = response.data[0]
-    
-    # Filter the site_type_market_status_filters to only include those matching the project's market_status_id
-    if project_data.get("site_types", {}).get("site_type_market_status_filters"):
-        project_data["site_types"]["site_type_market_status_filters"] = [
-            filter_data for filter_data in project_data["site_types"]["site_type_market_status_filters"]
-            if filter_data.get("market_status_id") == str(project_data["market_status_id"])
-        ]
-    
-    return project_data
+    return response.data[0]
 
 
-# get all projects of a user
+# Works well
 @project_router.get("/")
 async def get_all_projects(
     user_id: UUID4 = Query(None, description="Filter by user ID"),
     supabase: Client = Depends(get_supabase_client)
 ):
     try:
-        query = supabase.table("projects").select("*")
+        query = supabase.table("projects").select("id, title")
         
         if user_id:
             query = query.eq("user_id", str(user_id))
@@ -72,6 +58,7 @@ async def get_all_projects(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# Works well
 @project_router.post("/")
 async def create_project(
     project: ProjectCreate,
@@ -91,12 +78,62 @@ async def create_project(
         if not response.data:
             logger.error(f"Failed to create project: {project_data}")
             raise HTTPException(status_code=400, detail="Failed to create project")
-        return response.data[0]
+        
+        # Get the created project data
+        project_result = response.data[0]
+        
+        # Fetch the matching filters for this site type and market status
+        filters_response = await supabase.table("site_type_market_status_filters").select(
+            """
+            *,
+            filters(*)
+            """
+        ).eq("site_type_id", str(project.site_type_id)).eq("market_status_id", str(project.market_status_id)).execute()
+        
+        if filters_response.data:
+            # Create user_filters entries for each filter
+            user_filters = []
+            for filter_association in filters_response.data:
+                filter_data = filter_association["filters"]
+                user_filter = {
+                    "project_id": str(project_result["id"]),
+                    "filter_type": filter_data["filter_type"],
+                    "filter_data": filter_data["filter_data"]
+                }
+                user_filters.append(user_filter)
+                
+            if user_filters:
+                await supabase.table("user_filters").insert(user_filters).execute()
+        
+        # Get the final project data with all relations
+        final_response = await supabase.table("projects").select(
+            """
+            id,
+            created_at,
+            title,
+            market_status!inner(
+                id,
+                name
+            ),
+            site_types!inner(
+                id,
+                name
+            ),
+            user_filters(
+                id,
+                filter_type,
+                filter_data
+            )
+            """
+        ).eq("id", project_result["id"]).execute()
+        
+        return final_response.data[0]
     except Exception as e:
         logger.error(f"Error creating project: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# Works well
 @project_router.patch("/{project_id}")
 async def update_project(
     project_id: UUID4,
@@ -125,6 +162,7 @@ async def update_project(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# Works well
 @project_router.delete("/{project_id}")
 async def delete_project(
     project_id: UUID4,
