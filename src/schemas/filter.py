@@ -1,7 +1,7 @@
 from typing import Literal, Optional
 
 from pydantic import UUID4
-from schemas import BaseSchema
+from src.schemas import BaseSchema
 
 
 class FilterBase(BaseSchema):
