@@ -25,5 +25,6 @@ logger = logging.getLogger('buy-advocate')
 class Settings:
     SUPABASE_URL: str = os.getenv("SUPABASE_URL")
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY")
+    PROPERTY_TABLE_NAME: str = os.getenv("PROPERTY_TABLE_NAME")
 
 settings = Settings()

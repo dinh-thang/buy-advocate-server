@@ -7,6 +7,7 @@ from src.schemas import BaseSchema
 class FilterBase(BaseSchema):
     filter_type: str
     filter_data: Dict[str, Any] = Field(..., description="Filter data as a JSON object")
+    db_column_name: str
 
 
 class FilterCreate(FilterBase):

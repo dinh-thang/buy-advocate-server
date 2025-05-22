@@ -18,6 +18,8 @@ admin_router = APIRouter(
 
 
 # FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
+
+# works well
 @admin_router.post("/filters")
 async def create_filter(
     filter: FilterCreate,
@@ -28,7 +30,6 @@ async def create_filter(
     try:
         # Convert filter data and ensure UUIDs are strings
         filter_data = filter.model_dump(exclude={"id", "created_at"})
-        filter_data["filter_data"] = [filter_data["filter_data"]]
         
         for key, value in filter_data.items():
             if isinstance(value, UUID):

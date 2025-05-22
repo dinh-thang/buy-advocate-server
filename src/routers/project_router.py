@@ -98,7 +98,8 @@ async def create_project(
                 user_filter = {
                     "project_id": str(project_result["id"]),
                     "filter_type": filter_data["filter_type"],
-                    "filter_data": filter_data["filter_data"]
+                    "filter_data": filter_data["filter_data"],
+                    "db_column_name": filter_data["db_column_name"]
                 }
                 user_filters.append(user_filter)
                 
@@ -122,7 +123,8 @@ async def create_project(
             user_filters(
                 id,
                 filter_type,
-                filter_data
+                filter_data,
+                db_column_name
             )
             """
         ).eq("id", project_result["id"]).execute()

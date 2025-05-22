@@ -37,10 +37,8 @@ async def update_filters_batch(
             if not filter_id:
                 raise HTTPException(status_code=400, detail=f"Missing 'id' in update: {update}")
                 
-            # Convert the filter data to a dictionary and wrap filter_data in an array
+            # Convert the filter data to a dictionary
             update_data = {k: v for k, v in update.items() if k != "id"}
-            if "filter_data" in update_data:
-                update_data["filter_data"] = [update_data["filter_data"]]
                 
             logger.info(f"Updating filter {filter_id} with data: {update_data}")
             response = await supabase.table("user_filters").update(update_data).eq("id", str(filter_id)).execute()
@@ -68,10 +66,8 @@ async def update_filter(
     supabase: Client = Depends(get_supabase_client)
 ):
     try:
-        # Convert the filter data to a dictionary and wrap filter_data in an array
+        # Convert the filter data to a dictionary
         update_data = filter.model_dump(exclude_unset=True)
-        if "filter_data" in update_data:
-            update_data["filter_data"] = [update_data["filter_data"]]
             
         logger.info(f"Updating filter with data: {update_data}")
         response = await supabase.table("user_filters").update(update_data).eq("id", str(filter_id)).execute()
