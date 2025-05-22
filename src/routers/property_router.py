@@ -15,15 +15,12 @@ TABLE_NAME = settings.PROPERTY_TABLE_NAME
 
 # FILTERS=[
 #     'Zones',
-#     'Price',
-#     'Land Size',
+#     'Land Size', area, building or area_m2?
 #     'Traffic',
 #     'Overlays',
-#     'Frontage',
-#     'Corner',
-#     'Yield',
-#     'Lease Term',
-#     'Supply Demand Ratio',
+#     'Frontage', cant find this
+#     'Corner', cant find this
+#     'Supply Demand Ratio', cant find this
 #     'Land Size Rent Per Annum',
 #     'POI: Primary schools, Parks, Public Transport',
 #     'POI: Hospitals, Pharmacies,Public Transport',
@@ -40,14 +37,33 @@ TABLE_NAME = settings.PROPERTY_TABLE_NAME
 @property_router.post("/")
 async def get_properties(
     filters: Optional[List[FilterBase]] = Body(default=None, description="List of filters to apply"),
+    page: int = Body(default=1, description="Page number (1-based)"),
+    page_size: int = Body(default=100, description="Number of records per page"),
     supabase: Client = Depends(get_supabase_client)
 ):
-    logger.info(f"Received filters: {filters}")
-    query = supabase.table(TABLE_NAME).select("*")
+    logger.info(f"Received filters: {filters}, page: {page}, page_size: {page_size}")
+    
+    # Calculate range for pagination
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+    
+    query = supabase.table(TABLE_NAME).select(
+        "id",
+        "asking_price",
+        "address",
+        "property_images",
+        "description",
+        "agent_name",
+        "agent_phone_number",
+        "latitude",  # use for testing now
+        "longitude", # use for testing now
+        "yield_percentage",
+        "lease_terms",
+    ).range(start, end)
     
     if not filters:
         response = await query.execute()
-        logger.info(f"Returning all properties, count: {len(response.data) if response.data else 0}")
+        logger.info(f"Returning paginated properties, count: {len(response.data) if response.data else 0}")
         return response.data
     
     for filter_obj in filters:
@@ -56,6 +72,6 @@ async def get_properties(
             query = apply_min_max_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
     
     response = await query.execute()
-    logger.info(f"Filtered properties count: {len(response.data) if response.data else 0}")
+    logger.info(f"Filtered and paginated properties count: {len(response.data) if response.data else 0}")
 
     return response.data

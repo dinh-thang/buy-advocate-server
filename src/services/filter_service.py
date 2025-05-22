@@ -8,6 +8,9 @@ def apply_min_max_filter(query, db_column_name, filter_data):
     """
     min_value = filter_data.get('min')
     max_value = filter_data.get('max')
+
+    print(f"Applying min-max filter to {db_column_name} with values: min={min_value}, max={max_value}")
+    
     if min_value is not None:
         query = query.gte(db_column_name, min_value)
     if max_value is not None:
