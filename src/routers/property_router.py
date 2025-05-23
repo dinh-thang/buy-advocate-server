@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Body, Query
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from src.services.supabase_service import supabase_service
 from src.config import settings, logger
@@ -15,7 +15,8 @@ RANGE_FILTERS = [
     "price",
     "land size",
     "traffic",
-    "childcare demand ratio" 
+    "childcare demand ratio",
+    "days_on_market" 
 ] 
 
 ZONE_FILTERS = [
@@ -30,7 +31,7 @@ async def get_properties(
     filters: Optional[List[FilterBase]] = Body(default=None, description="List of filters to apply"),
     page: int = Body(default=1, description="Page number (1-based)"),
     page_size: int = Body(default=100, description="Number of records per page")
-):
+) -> Dict[str, Any]:
     logger.info(f"Received filters: {filters}, page: {page}, page_size: {page_size}")
     
     supabase = await supabase_service.client
@@ -83,9 +84,15 @@ async def get_properties(
     # Return all properties if no filters are applied
     if not filters:
         response = await query.execute()
+        count_query = supabase.table(TABLE_NAME).select("id", count="exact")
+        count_response = await count_query.execute()
+        total_count = count_response.count if count_response.count is not None else 0
         logger.info(f"Returning paginated properties, count: {len(response.data) if response.data else 0}")
         
-        return response.data
+        return {
+            "data": response.data,
+            "total_count": total_count
+        }
     
     # Check for filters and apply them
     for filter_obj in filters:
@@ -100,4 +107,7 @@ async def get_properties(
     response = await query.execute()
     logger.info(f"Filtered and paginated properties count: {len(response.data) if response.data else 0}")
 
-    return response.data
+    return {
+        "data": response.data,
+        "total_count": len(response.data)
+    }

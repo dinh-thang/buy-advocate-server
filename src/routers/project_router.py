@@ -43,7 +43,16 @@ async def get_all_projects(
 ):
     try:
         supabase = await supabase_service.client
-        query = supabase.table("projects").select("id, title").eq("user_id", user_id)
+        query = supabase.table("projects").select(
+        """
+        id,
+        created_at,
+        title,
+        market_status(*),
+        site_types(*),
+        user_filters(*)
+        """
+        ).eq("user_id", user_id)
         response = await query.execute()
 
         return response.data
