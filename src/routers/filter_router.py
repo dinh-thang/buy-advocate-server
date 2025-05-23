@@ -1,21 +1,48 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import UUID4
-from supabase import Client
 from typing import List
 from src.config import logger
 from src.schemas.user_filter import UserFilterUpdate
-from src.services.supabase_service import get_supabase_client
+from src.services.supabase_service import supabase_service
 
 
 filter_router = APIRouter(prefix="/filters", tags=["filters"])
 
 
-# Works well
-@filter_router.patch("/batch")
-async def update_filters_batch(
-    updates: List[dict],
-    supabase: Client = Depends(get_supabase_client)
+
+@filter_router.get("/default")
+async def load_default_filters(
+    site_type_id: UUID4,
+    market_status_id: UUID4
 ):
+    try:
+        supabase = await supabase_service.client
+        response = await supabase.table("site_type_market_status_filters").select(
+            """
+            *,
+            filters(
+                id,
+                filter_type,
+                filter_data,
+                db_column_name
+            )
+            """
+        ).eq("site_type_id", str(site_type_id)).eq("market_status_id", str(market_status_id)).execute()
+
+        if not response.data:
+            logger.error(f"No default filters found for site_type_id: {site_type_id} and market_status_id: {market_status_id}")
+            raise HTTPException(status_code=404, detail="No default filters found for the given site type and market status")
+
+        # Extract just the filters from the response
+        filters = [item["filters"] for item in response.data]
+        return filters
+    except Exception as e:
+        logger.error(f"Error loading default filters: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
+
+@filter_router.patch("/batch")
+async def update_filters_batch(updates: List[dict]):
     """
     Update multiple filters in a single request.
     Expected input format:
@@ -31,6 +58,7 @@ async def update_filters_batch(
     ]
     """
     try:
+        supabase = await supabase_service.client
         results = []
         for update in updates:
             filter_id = update.get("id")
@@ -58,14 +86,10 @@ async def update_filters_batch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Works well
 @filter_router.patch("/{filter_id}")
-async def update_filter(
-    filter_id: UUID4,
-    filter: UserFilterUpdate,
-    supabase: Client = Depends(get_supabase_client)
-):
+async def update_filter(filter_id: UUID4, filter: UserFilterUpdate):
     try:
+        supabase = await supabase_service.client
         # Convert the filter data to a dictionary
         update_data = filter.model_dump(exclude_unset=True)
             

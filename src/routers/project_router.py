@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from typing import List
 from pydantic import UUID4
-from supabase import Client
 from uuid import UUID
 
-from src.services.supabase_service import get_supabase_client
+from src.services.supabase_service import supabase_service
 from src.schemas.project import Project, ProjectCreate, ProjectBase, ProjectUpdate
 from src.config import logger
+from src.middleware.auth import get_current_user
 
 
 project_router = APIRouter(
@@ -15,11 +15,10 @@ project_router = APIRouter(
 )
 
 
+# THIS RETURN THE SAVED FILTER CONFIG, NOT THE DEFAULT CONFIGS
 @project_router.get("/{project_id}")
-async def get_project(
-    project_id: UUID4,
-    supabase: Client = Depends(get_supabase_client)
-):
+async def get_project(project_id: UUID4):
+    supabase = await supabase_service.client
     response = await supabase.table("projects").select(
         """
         id,
@@ -38,18 +37,13 @@ async def get_project(
     return response.data[0]
 
 
-# Works well
 @project_router.get("/")
 async def get_all_projects(
-    user_id: UUID4 = Query(None, description="Filter by user ID"),
-    supabase: Client = Depends(get_supabase_client)
+    user_id: str = Depends(get_current_user)
 ):
     try:
-        query = supabase.table("projects").select("id, title")
-        
-        if user_id:
-            query = query.eq("user_id", str(user_id))
-        
+        supabase = await supabase_service.client
+        query = supabase.table("projects").select("id, title").eq("user_id", user_id)
         response = await query.execute()
 
         return response.data
@@ -58,13 +52,10 @@ async def get_all_projects(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Works well
 @project_router.post("/")
-async def create_project(
-    project: ProjectCreate,
-    supabase: Client = Depends(get_supabase_client)
-):
+async def create_project(project: ProjectCreate):
     try:
+        supabase = await supabase_service.client
         # Convert the project data to a dictionary and ensure UUIDs are strings
         project_data = project.model_dump(exclude={"id", "created_at"})
         
@@ -135,14 +126,10 @@ async def create_project(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Works well
 @project_router.patch("/{project_id}")
-async def update_project(
-    project_id: UUID4,
-    project: ProjectUpdate,
-    supabase: Client = Depends(get_supabase_client)
-):
+async def update_project(project_id: UUID4, project: ProjectUpdate):
     try:
+        supabase = await supabase_service.client
         # Convert the project data to a dictionary and ensure UUIDs are strings
         project_data = project.model_dump(exclude_unset=True)
         
@@ -164,13 +151,10 @@ async def update_project(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Works well
 @project_router.delete("/{project_id}")
-async def delete_project(
-    project_id: UUID4,
-    supabase: Client = Depends(get_supabase_client)
-):
+async def delete_project(project_id: UUID4):
     try:
+        supabase = await supabase_service.client
         response = await supabase.table("projects").delete().eq("id", str(project_id)).execute()
         
         if not response.data:
