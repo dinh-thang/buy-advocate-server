@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from src.services.supabase_service import supabase_service
 from src.config import settings, logger
 from src.schemas.filter import FilterBase
-from src.services.filter_service import apply_min_max_filter, apply_zone_filter, filter_by_zones
+from src.services.filter_service import apply_min_max_filter, apply_single_value_filter, apply_exact_match_filter
 
 TABLE_NAME = settings.PROPERTY_TABLE_NAME
 
@@ -15,8 +15,6 @@ RANGE_FILTERS = [
     "price",
     "land size",
     "traffic",
-    "childcare demand ratio",
-    "days_on_market" 
 ] 
 
 ZONE_FILTERS = [
@@ -29,10 +27,12 @@ ZONE_FILTERS = [
 @property_router.post("/")
 async def get_properties(
     filters: Optional[List[FilterBase]] = Body(default=None, description="List of filters to apply"),
+    market_status: Optional[str] = Body(default=None, description="Market status to filter by"),
+    
     page: int = Body(default=1, description="Page number (1-based)"),
     page_size: int = Body(default=100, description="Number of records per page")
 ) -> Dict[str, Any]:
-    logger.info(f"Received filters: {filters}, page: {page}, page_size: {page_size}")
+    logger.info(f"Received filters: {filters}, market_status: {market_status}, page: {page}, page_size: {page_size}")
     
     supabase = await supabase_service.client
     
@@ -43,7 +43,7 @@ async def get_properties(
     query = supabase.table(TABLE_NAME).select(
         # PROPERTY LISTING DETAILS
         "id",
-        "building_area_m2",
+        "land_area_m2",
         "days_on_market",
         "listing_date",
         "agent_name",
@@ -51,6 +51,7 @@ async def get_properties(
         "description",
         "property_images",
         "asking_price",
+        "max_price_range",
         "address",
         "net_income",
         "yield_percentage",
@@ -63,6 +64,7 @@ async def get_properties(
         "longitude", # use for testing now
 
         # FILTERS 
+        "property_type",
         "category",
         "area",
         "zones",
@@ -79,12 +81,20 @@ async def get_properties(
         "distance_to_train",
         "distance_to_primary",
         "distance_to_secondary",
-    ).range(start, end)
+    )
+    
+    # Apply market status filter if provided (even when no other filters)
+    if market_status:
+        logger.info(f"Applying market status filter: {market_status}")
+        query = apply_exact_match_filter(query, "category", market_status)
     
     # Return all properties if no filters are applied
     if not filters:
         response = await query.execute()
         count_query = supabase.table(TABLE_NAME).select("id", count="exact")
+        
+        if market_status:
+            count_query = apply_exact_match_filter(count_query, "category", market_status)
         count_response = await count_query.execute()
         total_count = count_response.count if count_response.count is not None else 0
         logger.info(f"Returning paginated properties, count: {len(response.data) if response.data else 0}")
@@ -98,11 +108,13 @@ async def get_properties(
     for filter_obj in filters:
         filter_name = filter_obj.filter_type.lower()
         
-        if filter_name in RANGE_FILTERS:
+        # Log the filter details for debugging
+        logger.info(f"Processing filter: {filter_name}, column: {filter_obj.db_column_name}, data: {filter_obj.filter_data}")
+        
+        if filter_name in [f.lower() for f in RANGE_FILTERS]:
             query = apply_min_max_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-        elif filter_name in ZONE_FILTERS:
-            # query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-            query = await filter_by_zones(query, filter_obj.db_column_name, filter_obj.filter_data)
+        elif filter_name in [f.lower() for f in ZONE_FILTERS]:
+            query = apply_single_value_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
     
     response = await query.execute()
     logger.info(f"Filtered and paginated properties count: {len(response.data) if response.data else 0}")

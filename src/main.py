@@ -1,14 +1,19 @@
 import uvicorn
 
 from dotenv import load_dotenv
+
 from fastapi import APIRouter, FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from src.middleware.auth import get_current_user
+
 from src.routers.filter_router import filter_router
 from src.routers.project_router import project_router
 from src.routers.admin_router import admin_router
 from src.routers.property_router import property_router
-from src.middleware.auth import get_current_user
+from src.routers.site_type_router import site_type_router
+from src.routers.market_status_router import market_status_router
 
 
 app = FastAPI(swagger_ui_parameters={})
@@ -43,6 +48,9 @@ async def ping():
 app.include_router(project_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(filter_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(property_router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(site_type_router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(market_status_router, prefix="/api", dependencies=[Depends(get_current_user)])
+
 
 # Admin routes (you might want to add additional admin role checks)
 app.include_router(admin_router, prefix="/api", dependencies=[Depends(get_current_user)])

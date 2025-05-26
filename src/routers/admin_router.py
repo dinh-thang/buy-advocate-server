@@ -207,25 +207,6 @@ async def create_site_type(site_type: SiteTypeCreate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@admin_router.get("/site_types",
-    tags=["admin/site-types"],
-    operation_id="get_all_site_types",
-    summary="Get all site types",
-    description="Retrieves all site types with their IDs and names"
-)
-async def get_all_site_types():
-    try:
-        supabase = await supabase_service.client
-        response = await supabase.table("site_types").select("id, name").execute()
-        
-        if not response.data:
-            return []
-            
-        return response.data
-    except Exception as e:
-        logger.error(f"Error fetching site types: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
 
 @admin_router.patch("/site_types/{site_type_id}",
     tags=["admin/site-types"],
@@ -301,25 +282,6 @@ async def create_market_status(market_status: MarketStatusCreate):
         logger.error(f"Error creating market status: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-@admin_router.get("/market_status",
-    tags=["admin/market-status"],
-    operation_id="get_all_market_statuses",
-    summary="Get all market statuses",
-    description="Retrieves all market statuses with their IDs and names"
-)
-async def get_all_market_statuses():
-    try:
-        supabase = await supabase_service.client
-        response = await supabase.table("market_status").select("id, name").execute()
-        
-        if not response.data:
-            return []
-            
-        return response.data
-    except Exception as e:
-        logger.error(f"Error fetching market statuses: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @admin_router.patch("/market_status/{market_status_id}",

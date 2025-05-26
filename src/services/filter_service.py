@@ -11,7 +11,9 @@ MISSING FILTERS FOR:
 - Rent per annum (maybe a range filter)
 """
 
+import logging
 
+logger = logging.getLogger(__name__)
 
 def apply_min_max_filter(query, db_column_name, filter_data):
     """
@@ -24,103 +26,96 @@ def apply_min_max_filter(query, db_column_name, filter_data):
     min_value = filter_data.get('min')
     max_value = filter_data.get('max')
 
-    print(f"Applying min-max filter to {db_column_name} with values: min={min_value}, max={max_value}")
+    logger.info(f"Applying min-max filter to {db_column_name}")
+    logger.info(f"Filter data: {filter_data}")
+    logger.info(f"Min value: {min_value}, Max value: {max_value}")
     
-    if min_value is not None:
-        query = query.gte(db_column_name, min_value)
-    if max_value is not None:
-        query = query.lte(db_column_name, max_value)
-    return query 
+    try:
+        if min_value is not None:
+            query = query.gte(db_column_name, min_value)
+            logger.info(f"Added gte filter: {db_column_name} >= {min_value}")
+        if max_value is not None:
+            query = query.lte(db_column_name, max_value)
+            logger.info(f"Added lte filter: {db_column_name} <= {max_value}")
+        
+        # Log the current query state (this might not show the full SQL but helps with debugging)
+        logger.info(f"Query object after applying {db_column_name} filter: {query}")
+        
+    except Exception as e:
+        logger.error(f"Error applying min-max filter to {db_column_name}: {e}")
+        logger.error(f"This might indicate the column doesn't exist or has incompatible data type")
+        # Return the original query if filtering fails
+        
+    return query
 
 
-def apply_zone_filter(query, db_column_name, filter_data):
+def apply_single_value_filter(query, db_column_name, filter_data):
     """
-    Applies a zone filter to a Supabase query.
+    Applies a single value filter to a Supabase query.
+    For array columns, checks if ALL of the specified values exist in the array.
+    For text columns, performs case-insensitive comparison.
     :param query: The Supabase query object
-    :param db_column_name: The column name to filter on (zones)
-    :param filter_data: Dict with 'zones' key containing list of zone strings
+    :param db_column_name: The column name to filter on
+    :param filter_data: Dict with 'values' key containing list of values
     :return: Modified query object
     """
-    zones = filter_data.get('zones', [])
+    values = filter_data.get('values', []) if isinstance(filter_data, dict) else []
     
-    if not zones:
+    logger.info(f"Applying single value filter to {db_column_name}")
+    logger.info(f"Filter data: {filter_data}")
+    logger.info(f"Values to filter: {values}")
+    
+    if not values:
+        logger.info("No values provided, returning original query")
         return query
-        
-    print(f"Applying zone filter to {db_column_name} with zones: {zones}")
     
-    # For each zone in the input list, check if it exists in the database column
-    for zone in zones:
-        # Use contains to check if the zone exists in the array
-        query = query.contains(db_column_name, [zone])
+    # Check if we're dealing with an array column (zones)
+    if db_column_name == 'zones':
+        # For array columns, use the @> operator to check if array contains ALL specified values
+        # This will match records that contain ALL of the specified values
+        query = query.contains(db_column_name, values)
+        logger.info(f"Added contains filter for zones: {values}")
+    else:
+        # For text columns, use ilike for case-insensitive comparison
+        for value in values:
+            query = query.ilike(db_column_name, f'%{value}%')
+            logger.info(f"Added ilike filter: {db_column_name} LIKE '%{value}%'")
         
     return query 
 
 
-async def filter_by_zones(
-    query,
-    db_column_name,
-    filter_data
-):
+def apply_exact_match_filter(query, db_column_name, filter_value):
     """
-    Filters the Supabase query by zones.
-
-    The database stores zones as strings like "{Z1, Z2, Z3}".
-    The filter checks if any of the input zones are present in the column.
-
-    :param query: Supabase query builder object.
-    :param db_column_name: Name of the database column to filter (e.g. "zones").
-    :param filter_data: Dict with 'zones' key containing a list of zone strings (case-insensitive).
-    :return: Modified query builder with the zones filter applied.
+    Applies an exact match filter to a Supabase query.
+    For market status filtering on category column.
+    This performs strict exact matching - "for-sale" will NOT match "for-sale, for-lease".
+    :param query: The Supabase query object
+    :param db_column_name: The column name to filter on
+    :param filter_value: The exact value to match (can contain comma-separated values for OR logic)
+    :return: Modified query object
     """
-
-    zones = filter_data.get("zones")
-    if not zones:
-        # No zones filter provided, return original query unmodified
+    logger.info(f"Applying exact match filter to {db_column_name}")
+    logger.info(f"Filter value: {filter_value}")
+    
+    if not filter_value:
+        logger.info("No filter value provided, returning original query")
         return query
-
-    # Normalize input zones (uppercase) to match DB format (e.g. Z1)
-    normalized_zones = [zone.upper() for zone in zones]
-
-    # Build a list of filter conditions
-    # Since zones column format is like '{Z1, Z2}', we can use Postgres text search operators.
-    # One approach is to check if zones column contains the zone string (case-insensitive).
-    # Using "ilike" with pattern '%Z1%' is simple but may cause false positives if zone codes overlap,
-    # so we use the pattern with braces and commas for more exact match.
-    # Pattern examples:
-    # - zones ilike '%{Z1,%' OR zones ilike '%,Z1,%' OR zones ilike '%,Z1}%' OR zones ilike '{Z1}'
-
-    # To simplify, use Postgres array operators if the column is stored as an array type.
-    # If it's a string, we simulate array containment using text pattern matching.
-
-    # For supabase PostgREST, we can use 'or' filters joined by commas.
-
-    conditions = []
-    for zone in normalized_zones:
-        # Create patterns to cover:
-        # - zone at start: "{ZONE,"
-        # - zone at middle: ", ZONE,"
-        # - zone at end: ", ZONE}"
-        # - single zone: "{ZONE}"
-        # Use ilike for case-insensitivity.
-        patterns = [
-            f"{{{zone},%",     # Start: "{Z1,"
-            f"%, {zone},%",    # Middle: ", Z1,"
-            f"%, {zone}}}",    # End: ", Z1}"
-            f"{{{zone}}}"      # Single zone "{Z1}"
-        ]
-        for p in patterns:
-            # Escape braces in pattern by wrapping with % and use ilike
-            conditions.append(f"{db_column_name}.ilike.%{p}%")
-
-    # Combine conditions with OR operator in PostgREST filter syntax
-    # It expects comma-separated or expressions inside parentheses: or=(cond1,cond2,...)
-    or_filter = ",".join(conditions)
-
-    # Apply or filter to the query
-    # Supabase client in python expects filters using 'or' like:
-    # query = query.or_('zones.ilike.%{Z1}%,zones.ilike.%{Z2}%')
-    # Since each condition is like zones.ilike.%pattern%, we join them by comma inside or_
-
-    query = query.or_(or_filter)
-
-    return query
+    
+    try:
+        # Handle comma-separated values as OR conditions (like "for-sale, for-lease")
+        # This means we want records that match EXACTLY "for-sale" OR EXACTLY "for-lease"
+        if "," in filter_value:
+            values = [v.strip() for v in filter_value.split(",")]
+            # Use 'in' operator for multiple exact values (OR logic)
+            query = query.in_(db_column_name, values)
+            logger.info(f"Added exact match 'in' filter: {db_column_name} IN {values}")
+        else:
+            # Single exact match
+            query = query.eq(db_column_name, filter_value)
+            logger.info(f"Added exact match filter: {db_column_name} = '{filter_value}'")
+        
+    except Exception as e:
+        logger.error(f"Error applying exact match filter to {db_column_name}: {e}")
+        # Return the original query if filtering fails
+        
+    return query 
