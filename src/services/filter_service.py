@@ -49,6 +49,39 @@ def apply_min_max_filter(query, db_column_name, filter_data):
     return query
 
 
+def apply_zone_filter(query, db_column_name, filter_data):
+    """
+    Applies a zone filter to a Supabase query for array columns.
+    Matches records that contain ANY of the specified values in the array.
+    :param query: The Supabase query object
+    :param db_column_name: The column name to filter on (should be an array column)
+    :param filter_data: Dict with 'values' key containing list of zone values
+    :return: Modified query object
+    """
+    values = filter_data.get('values', []) if isinstance(filter_data, dict) else []
+    
+    logger.info(f"Applying zone filter to {db_column_name}")
+    logger.info(f"Filter data: {filter_data}")
+    logger.info(f"Zone values to filter: {values}")
+    
+    if not values:
+        logger.info("No zone values provided, returning original query")
+        return query
+    
+    try:
+        # Use the overlap operator (&&) to check if the array contains ANY of the specified values
+        # This will match records where the array has at least one element in common with the filter values
+        query = query.overlaps(db_column_name, values)
+        logger.info(f"Added overlap filter for {db_column_name}: array overlaps with {values}")
+        
+    except Exception as e:
+        logger.error(f"Error applying zone filter to {db_column_name}: {e}")
+        logger.error(f"This might indicate the column doesn't exist or is not an array type")
+        # Return the original query if filtering fails
+        
+    return query
+
+
 def apply_single_value_filter(query, db_column_name, filter_data):
     """
     Applies a single value filter to a Supabase query.

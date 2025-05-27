@@ -14,26 +14,53 @@ project_router = APIRouter(
 )
 
 
-# THIS RETURN THE SAVED FILTER CONFIG, NOT THE DEFAULT CONFIGS
+# THIS RETURNS BOTH THE SAVED FILTER CONFIG AND THE DEFAULT CONFIGS
 @project_router.get("/{project_id}")
 async def get_project(project_id: UUID4):
-    supabase = await supabase_service.client
-    response = await supabase.table("projects").select(
-        """
-        id,
-        created_at,
-        title,
-        market_status(*),
-        site_types(*),
-        user_filters(*)
-        """
-    ).eq("id", project_id).execute()
+    try:
+        supabase = await supabase_service.client
+        response = await supabase.table("projects").select(
+            """
+            id,
+            created_at,
+            title,
+            site_type_id,
+            market_status_id,
+            market_status(*),
+            site_types(*),
+            user_filters(*)
+            """
+        ).eq("id", project_id).execute()
 
-    if not response.data:
-        logger.error(f"Project not found with id: {project_id}")
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    return response.data[0]
+        if not response.data:
+            logger.error(f"Project not found with id: {project_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project = response.data[0]
+        
+        # Fetch default filters for this project's site type and market status
+        default_filters_response = await supabase.table("site_type_market_status_filters").select(
+            """
+            *,
+            filters(
+                id,
+                filter_type,
+                filter_data,
+                db_column_name
+            )
+            """
+        ).eq("site_type_id", str(project["site_type_id"])).eq("market_status_id", str(project["market_status_id"])).execute()
+        
+        # Extract the default filters
+        default_filters = [item["filters"] for item in default_filters_response.data] if default_filters_response.data else []
+        
+        # Add default filters to the project data
+        project["default_filters"] = default_filters
+        
+        return project
+    except Exception as e:
+        logger.error(f"Error fetching project {project_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @project_router.get("/")
@@ -45,11 +72,7 @@ async def get_all_projects(
         query = supabase.table("projects").select(
         """
         id,
-        created_at,
-        title,
-        market_status(*),
-        site_types(*),
-        user_filters(*)
+        title
         """
         ).eq("user_id", user_id)
         response = await query.execute()
@@ -138,6 +161,18 @@ async def create_project(project: ProjectCreate):
 async def update_project(project_id: UUID4, project: ProjectUpdate):
     try:
         supabase = await supabase_service.client
+        
+        # First, get the current project data to check if site_type_id or market_status_id changed
+        current_project_response = await supabase.table("projects").select(
+            "id, site_type_id, market_status_id"
+        ).eq("id", str(project_id)).execute()
+        
+        if not current_project_response.data:
+            logger.error(f"Project not found for update with id: {project_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        current_project = current_project_response.data[0]
+        
         # Convert the project data to a dictionary and ensure UUIDs are strings
         project_data = project.model_dump(exclude_unset=True)
         
@@ -148,12 +183,53 @@ async def update_project(project_id: UUID4, project: ProjectUpdate):
             if isinstance(value, UUID):
                 project_data[key] = str(value)
         
+        # Check if site_type_id or market_status_id is being changed
+        site_type_changed = "site_type_id" in project_data and str(project_data["site_type_id"]) != str(current_project["site_type_id"])
+        market_status_changed = "market_status_id" in project_data and str(project_data["market_status_id"]) != str(current_project["market_status_id"])
+        
+        # Update the project
         response = await supabase.table("projects").update(project_data).eq("id", str(project_id)).execute()
         
         if not response.data:
             logger.error(f"Project not found for update with id: {project_id}")
             raise HTTPException(status_code=404, detail="Project not found")
-        return response.data[0]
+        
+        updated_project = response.data[0]
+        
+        # If site_type_id or market_status_id changed, reset user filters to default
+        if site_type_changed or market_status_changed:
+            # Delete all existing user filters for this project
+            await supabase.table("user_filters").delete().eq("project_id", str(project_id)).execute()
+            
+            # Get the new site_type_id and market_status_id (use updated values or current values)
+            new_site_type_id = project_data.get("site_type_id", current_project["site_type_id"])
+            new_market_status_id = project_data.get("market_status_id", current_project["market_status_id"])
+            
+            # Fetch the default filters for the new combination
+            filters_response = await supabase.table("site_type_market_status_filters").select(
+                """
+                *,
+                filters(*)
+                """
+            ).eq("site_type_id", str(new_site_type_id)).eq("market_status_id", str(new_market_status_id)).execute()
+            
+            if filters_response.data:
+                # Create new user_filters entries based on default filters
+                user_filters = []
+                for filter_association in filters_response.data:
+                    filter_data = filter_association["filters"]
+                    user_filter = {
+                        "project_id": str(project_id),
+                        "filter_type": filter_data["filter_type"],
+                        "filter_data": filter_data["filter_data"],
+                        "db_column_name": filter_data["db_column_name"]
+                    }
+                    user_filters.append(user_filter)
+                    
+                if user_filters:
+                    await supabase.table("user_filters").insert(user_filters).execute()
+        
+        return updated_project
     except Exception as e:
         logger.error(f"Error updating project {project_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")

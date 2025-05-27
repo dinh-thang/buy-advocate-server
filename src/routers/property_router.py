@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from src.services.supabase_service import supabase_service
 from src.config import settings, logger
 from src.schemas.filter import FilterBase
-from src.services.filter_service import apply_min_max_filter, apply_single_value_filter, apply_exact_match_filter
+from src.services.filter_service import apply_min_max_filter, apply_single_value_filter, apply_exact_match_filter, apply_zone_filter
 
 TABLE_NAME = settings.PROPERTY_TABLE_NAME
 
@@ -19,7 +19,6 @@ RANGE_FILTERS = [
 
 ZONE_FILTERS = [
     "zone",
-    # permits can go here (single select filter)
 ] 
 
 
@@ -114,6 +113,9 @@ async def get_properties(
         if filter_name in [f.lower() for f in RANGE_FILTERS]:
             query = apply_min_max_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
         elif filter_name in [f.lower() for f in ZONE_FILTERS]:
+            # Use the new zone filter for array columns that need ANY match logic
+            query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+        else:
             query = apply_single_value_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
     
     response = await query.execute()
