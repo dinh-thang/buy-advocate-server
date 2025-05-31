@@ -81,47 +81,45 @@ async def get_properties(
         "distance_to_primary",
         "distance_to_secondary",
     )
+
+    # Create count query
+    count_query = supabase.table(TABLE_NAME).select("*", count="exact")
     
     # Apply market status filter if provided (even when no other filters)
     if market_status:
         logger.info(f"Applying market status filter: {market_status}")
         query = apply_exact_match_filter(query, "category", market_status)
+        count_query = apply_exact_match_filter(count_query, "category", market_status)
     
-    # Return all properties if no filters are applied
-    if not filters:
-        response = await query.execute()
-        count_query = supabase.table(TABLE_NAME).select("id", count="exact")
-        
-        if market_status:
-            count_query = apply_exact_match_filter(count_query, "category", market_status)
-        count_response = await count_query.execute()
-        total_count = count_response.count if count_response.count is not None else 0
-        logger.info(f"Returning paginated properties, count: {len(response.data) if response.data else 0}")
-        
-        return {
-            "data": response.data,
-            "total_count": total_count
-        }
+    # Apply filters if provided
+    if filters:
+        for filter_obj in filters:
+            filter_name = filter_obj.filter_type.lower()
+            
+            logger.info(f"Processing filter: {filter_name}, column: {filter_obj.db_column_name}, data: {filter_obj.filter_data}")
+            
+            if filter_name in [f.lower() for f in RANGE_FILTERS]:
+                query = apply_min_max_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+                count_query = apply_min_max_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
+            elif filter_name in [f.lower() for f in ZONE_FILTERS]:
+                query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+                count_query = apply_zone_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
+            else:
+                query = apply_single_value_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+                count_query = apply_single_value_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
+
+    # Get total count first
+    count_response = await count_query.execute()
+    total_count = count_response.count if count_response.count is not None else 0
+
+    # Apply pagination to the data query
+    query = query.range(start, end)
     
-    # Check for filters and apply them
-    for filter_obj in filters:
-        filter_name = filter_obj.filter_type.lower()
-        
-        # Log the filter details for debugging
-        logger.info(f"Processing filter: {filter_name}, column: {filter_obj.db_column_name}, data: {filter_obj.filter_data}")
-        
-        if filter_name in [f.lower() for f in RANGE_FILTERS]:
-            query = apply_min_max_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-        elif filter_name in [f.lower() for f in ZONE_FILTERS]:
-            # Use the new zone filter for array columns that need ANY match logic
-            query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-        else:
-            query = apply_single_value_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-    
+    # Get paginated data
     response = await query.execute()
-    logger.info(f"Filtered and paginated properties count: {len(response.data) if response.data else 0}")
+    logger.info(f"Returning paginated properties, count: {len(response.data) if response.data else 0}, total: {total_count}")
 
     return {
         "data": response.data,
-        "total_count": len(response.data)
+        "total_count": total_count
     }
