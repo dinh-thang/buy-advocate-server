@@ -15,6 +15,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def apply_min_max_filter(query, db_column_name, filter_data):
     """
     Applies a min-max filter to a Supabase query.
@@ -152,3 +153,56 @@ def apply_exact_match_filter(query, db_column_name, filter_value):
         # Return the original query if filtering fails
         
     return query 
+
+
+"""
+filter_data format:
+{
+    'value': [
+        {'db_column_name': 'childcare_demand_ratio_1km', 'distance': 2},
+        {'db_column_name': 'childcare_demand_ratio_2km', 'distance': 5},
+    ]
+}
+"""
+def apply_demand_ratio_filter(query, filter_data):
+    """
+    Applies a demand ratio filter to a Supabase query.
+    :param query: The Supabase query object
+    :param filter_data: Dict with 'value' key containing list of filters, each with 'db_column_name' and 'distance'
+    :return: Modified query object
+    """
+    filters = filter_data.get('value', [])
+    
+    logger.info(f"Applying demand ratio filters")
+    logger.info(f"Filter data: {filter_data}")
+    
+    if not filters:
+        logger.info("No filters provided, returning original query")
+        return query
+    
+    try:
+        for filter_item in filters:
+            column = filter_item.get('db_column_name')
+            threshold = filter_item.get('distance')
+            
+            if not column or threshold is None:
+                logger.warning(f"Skipping invalid filter item: {filter_item}")
+                continue
+                
+            logger.info(f"Applying filter for column {column} with threshold {threshold}")
+            
+            # First, filter out records where the ratio is 0
+            query = query.not_.eq(column, 0)
+            
+            # Then, match records where the database value is less than or equal to the threshold
+            query = query.lte(column, threshold)
+            
+            logger.info(f"Added demand ratio filter: {column} != 0 AND {column} <= {threshold}")
+        
+    except Exception as e:
+        logger.error(f"Error applying demand ratio filters: {e}")
+        logger.error(f"This might indicate a column doesn't exist or has incompatible data type")
+        # Return the original query if filtering fails
+        
+    return query
+
