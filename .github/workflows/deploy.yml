@@ -1,0 +1,18 @@
+name: 🚀 Deploy to Railway
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🚀 Trigger Railway Deploy
+        run: |
+          curl -X POST https://backboard.railway.app/webhook/deploy/${{ secrets.RAILWAY_PROJECT }} \
+          -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}"
