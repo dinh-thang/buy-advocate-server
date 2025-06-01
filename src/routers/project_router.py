@@ -4,7 +4,7 @@ from pydantic import UUID4
 from uuid import UUID
 
 from src.services.supabase_service import supabase_service
-from src.schemas.project import Project, ProjectCreate, ProjectBase, ProjectUpdate
+from src.schemas.project import ProjectCreate, ProjectUpdate
 from src.config import logger
 from src.middleware.auth import get_current_user
  

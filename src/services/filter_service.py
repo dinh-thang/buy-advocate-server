@@ -158,22 +158,22 @@ def apply_exact_match_filter(query, db_column_name, filter_value):
 """
 filter_data format:
 {
-    'value': [
-        {'db_column_name': 'childcare_demand_ratio_1km', 'distance': 2},
-        {'db_column_name': 'childcare_demand_ratio_2km', 'distance': 5},
+    'values': [
+        {'db_column_name': 'childcare_demand_ratio_1km', 'value': 2},
+        {'db_column_name': 'childcare_demand_ratio_2km', 'value': 5},
     ]
 }
 """
-def apply_demand_ratio_filter(query, filter_data):
+def apply_distance_to_poi_filter(query, filter_data):
     """
-    Applies a demand ratio filter to a Supabase query.
+    Applies a distance to POI filter to a Supabase query.
     :param query: The Supabase query object
     :param filter_data: Dict with 'value' key containing list of filters, each with 'db_column_name' and 'distance'
     :return: Modified query object
     """
-    filters = filter_data.get('value', [])
+    filters = filter_data.get('values', [])
     
-    logger.info(f"Applying demand ratio filters")
+    logger.info(f"Applying distance to POI filters")
     logger.info(f"Filter data: {filter_data}")
     
     if not filters:
@@ -183,7 +183,7 @@ def apply_demand_ratio_filter(query, filter_data):
     try:
         for filter_item in filters:
             column = filter_item.get('db_column_name')
-            threshold = filter_item.get('distance')
+            threshold = filter_item.get('value')
             
             if not column or threshold is None:
                 logger.warning(f"Skipping invalid filter item: {filter_item}")
