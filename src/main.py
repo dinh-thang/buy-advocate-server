@@ -18,7 +18,8 @@ from src.routers.market_status_router import market_status_router
 
 app = FastAPI(
     swagger_ui_parameters={},
-    trust_env=True
+    trust_env=True,
+    redirect_slashes=False
 )
 api_router = APIRouter()
 
