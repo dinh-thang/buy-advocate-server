@@ -21,6 +21,13 @@ app = FastAPI(
     trust_env=True,
     redirect_slashes=False
 )
+
+
+from typing import Any, Callable
+
+from fastapi import APIRouter as FastAPIRouter
+from fastapi.types import DecoratedCallable
+
 api_router = APIRouter()
 
 origins = [
