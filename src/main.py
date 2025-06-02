@@ -22,7 +22,9 @@ api_router = APIRouter()
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://172.29.144.1:3000"
+    "http://172.29.144.1:3000",
+    "https://buy-advocate-mauve.vercel.app/",
+    "https://buy-advocate-mauve.vercel.app/api"
 ]
 
 app.add_middleware(
