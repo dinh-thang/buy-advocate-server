@@ -16,7 +16,10 @@ from src.routers.site_type_router import site_type_router
 from src.routers.market_status_router import market_status_router
 
 
-app = FastAPI(swagger_ui_parameters={})
+app = FastAPI(
+    swagger_ui_parameters={},
+    trust_env=True
+)
 api_router = APIRouter()
 
 origins = [
