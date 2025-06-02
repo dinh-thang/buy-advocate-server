@@ -46,7 +46,9 @@ async def get_project(project_id: UUID4):
                 id,
                 filter_type,
                 filter_data,
-                db_column_name
+                db_column_name,
+                order,
+                is_open
             )
             """
         ).eq("site_type_id", str(project["site_type_id"])).eq("market_status_id", str(project["market_status_id"])).execute()
@@ -72,7 +74,8 @@ async def get_all_projects(
         query = supabase.table("projects").select(
         """
         id,
-        title
+        title,
+        is_active
         """
         ).eq("user_id", user_id)
         response = await query.execute()
@@ -121,7 +124,9 @@ async def create_project(project: ProjectCreate):
                     "project_id": str(project_result["id"]),
                     "filter_type": filter_data["filter_type"],
                     "filter_data": filter_data["filter_data"],
-                    "db_column_name": filter_data["db_column_name"]
+                    "db_column_name": filter_data["db_column_name"],
+                    "order": filter_data["order"],
+                    "is_open": filter_data["is_open"]
                 }
                 user_filters.append(user_filter)
                 
@@ -146,7 +151,9 @@ async def create_project(project: ProjectCreate):
                 id,
                 filter_type,
                 filter_data,
-                db_column_name
+                db_column_name,
+                order,
+                is_open
             )
             """
         ).eq("id", project_result["id"]).execute()
@@ -222,7 +229,9 @@ async def update_project(project_id: UUID4, project: ProjectUpdate):
                         "project_id": str(project_id),
                         "filter_type": filter_data["filter_type"],
                         "filter_data": filter_data["filter_data"],
-                        "db_column_name": filter_data["db_column_name"]
+                        "db_column_name": filter_data["db_column_name"],
+                        "order": filter_data["order"],
+                        "is_open": filter_data["is_open"]
                     }
                     user_filters.append(user_filter)
                     

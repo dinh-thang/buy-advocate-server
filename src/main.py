@@ -14,6 +14,7 @@ from src.routers.admin_router import admin_router
 from src.routers.property_router import property_router
 from src.routers.site_type_router import site_type_router
 from src.routers.market_status_router import market_status_router
+from src.routers.poi_router import poi_router
 
 
 app = FastAPI(
@@ -23,7 +24,7 @@ app = FastAPI(
 )
 
 
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import APIRouter as FastAPIRouter
 from fastapi.types import DecoratedCallable
@@ -63,6 +64,7 @@ app.include_router(filter_router, prefix="/api", dependencies=[Depends(get_curre
 app.include_router(property_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(site_type_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(market_status_router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(poi_router, prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 # Admin routes (you might want to add additional admin role checks)

@@ -206,3 +206,55 @@ def apply_distance_to_poi_filter(query, filter_data):
         
     return query
 
+
+"""
+filter_data format:
+{
+    'is_higher_than': True,
+    'value': 0.5,
+}
+"""
+def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
+    """
+    Applies a supply demand ratio filter to a Supabase query.
+    :param query: The Supabase query object
+    :param db_column_name: The column name to filter on
+    :param filter_data: Dict with 'is_higher_than' key, 'value' key
+    :return: Modified query object
+    """
+    is_higher_than = filter_data.get('is_higher_than')
+    value = filter_data.get('value')
+    
+    logger.info(f"Applying supply demand ratio filter to {db_column_name}")
+    logger.info(f"Filter data: {filter_data}")
+    logger.info(f"Is higher than: {is_higher_than}, Value: {value}")
+    
+    if value is None:
+        logger.info("No value provided, returning original query")
+        return query
+    
+    if is_higher_than is None:
+        logger.warning("No 'is_higher_than' flag provided, returning original query")
+        return query
+    
+    try:
+        if is_higher_than:
+            # Match values higher than or equal to the input value
+            query = query.gte(db_column_name, value)
+            logger.info(f"Added gte filter: {db_column_name} >= {value}")
+        else:
+            # Match values lower than or equal to the input value
+            query = query.lte(db_column_name, value)
+            logger.info(f"Added lte filter: {db_column_name} <= {value}")
+        
+        # Log the current query state (this might not show the full SQL but helps with debugging)
+        logger.info(f"Query object after applying {db_column_name} filter: {query}")
+        
+    except Exception as e:
+        logger.error(f"Error applying supply demand ratio filter to {db_column_name}: {e}")
+        logger.error(f"This might indicate the column doesn't exist or has incompatible data type")
+        # Return the original query if filtering fails
+        
+    return query
+
+

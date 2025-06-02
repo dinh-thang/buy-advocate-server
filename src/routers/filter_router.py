@@ -24,7 +24,9 @@ async def load_default_filters(
                 id,
                 filter_type,
                 filter_data,
-                db_column_name
+                db_column_name,
+                order,
+                is_open
             )
             """
         ).eq("site_type_id", str(site_type_id)).eq("market_status_id", str(market_status_id)).execute()

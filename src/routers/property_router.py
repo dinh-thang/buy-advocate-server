@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from src.services.supabase_service import supabase_service
 from src.config import settings, logger
 from src.schemas.filter import FilterBase
-from src.services.filter_service import apply_distance_to_poi_filter, apply_min_max_filter, apply_single_value_filter, apply_exact_match_filter, apply_zone_filter
+from src.services.filter_service import apply_distance_to_poi_filter, apply_min_max_filter, apply_single_value_filter, apply_exact_match_filter, apply_supply_demand_ratio_filter, apply_zone_filter
 
 
 property_router = APIRouter(prefix="/properties", tags=["properties"])
@@ -22,8 +22,11 @@ ZONE_FILTERS = [
 ] 
 
 
-DISTANCE_AND_RATIO_FILTERS = [
+DISTANCE_TO_POI_FILTERS = [
     "distance to pois",
+]
+
+DEMAND_RATIO_FILTERS = [
     "childcare demand ratio",
     "aged care demand ratio",
     "medical demand ratio",
@@ -111,9 +114,12 @@ async def get_properties(
             elif filter_name in [f.lower() for f in ZONE_FILTERS]:
                 query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
                 count_query = apply_zone_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
-            elif filter_name in [f.lower() for f in DISTANCE_AND_RATIO_FILTERS]:
-                query = apply_distance_to_poi_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-                count_query = apply_distance_to_poi_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
+            elif filter_name in [f.lower() for f in DISTANCE_TO_POI_FILTERS]:
+                query = apply_distance_to_poi_filter(query, filter_obj.filter_data)
+                count_query = apply_distance_to_poi_filter(count_query, filter_obj.filter_data)
+            elif filter_name in [f.lower() for f in DEMAND_RATIO_FILTERS]:
+                query = apply_supply_demand_ratio_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+                count_query = apply_supply_demand_ratio_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
             # else:
             #     query = apply_single_value_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
             #     count_query = apply_single_value_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
