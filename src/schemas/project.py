@@ -21,6 +21,7 @@ class ProjectUpdate(ProjectBase):
     title: Optional[str] = None
     site_type_id: Optional[UUID4] = None
     market_status_id: Optional[UUID4] = None
+    is_active: Optional[bool] = None
 
     class Config:
         from_attributes = True

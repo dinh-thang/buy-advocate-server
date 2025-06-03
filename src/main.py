@@ -2,12 +2,17 @@ import uvicorn
 
 from dotenv import load_dotenv
 
+from typing import Any
+
+from fastapi import APIRouter as FastAPIRouter
+from fastapi.types import DecoratedCallable
 from fastapi import APIRouter, FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.middleware.auth import get_current_user
 
+from src.routers.poi_detail_router import poi_detail_router
 from src.routers.filter_router import filter_router
 from src.routers.project_router import project_router
 from src.routers.admin_router import admin_router
@@ -22,12 +27,6 @@ app = FastAPI(
     trust_env=True,
     redirect_slashes=False
 )
-
-
-from typing import Any
-
-from fastapi import APIRouter as FastAPIRouter
-from fastapi.types import DecoratedCallable
 
 api_router = APIRouter()
 
@@ -65,6 +64,7 @@ app.include_router(property_router, prefix="/api", dependencies=[Depends(get_cur
 app.include_router(site_type_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(market_status_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(poi_router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(poi_detail_router, prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 # Admin routes (you might want to add additional admin role checks)

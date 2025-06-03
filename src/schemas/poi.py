@@ -12,6 +12,7 @@ class POIBase(BaseSchema):
     db_column_name: str
     icon_svg: str
     order: int = Field(description="Order for displaying POI")
+    details_table_name: str = Field(description="Name of the table to fetch details from")
 
 
 class POICreate(POIBase):
@@ -23,6 +24,7 @@ class POIUpdate(BaseSchema):
     db_column_name: Optional[str] = None
     icon_svg: Optional[str] = None
     order: Optional[int] = None
+    details_table_name: Optional[str] = None
 
     class Config:
         from_attributes = True

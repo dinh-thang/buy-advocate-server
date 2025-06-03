@@ -32,7 +32,8 @@ async def get_all_poi():
             icon_svg,
             order,
             site_type_id,
-            site_types(name)
+            site_types(name),
+            details_table_name
             """
         ).order("order").execute()
         
@@ -91,7 +92,7 @@ async def create_poi(
             icon_svg,
             order,
             site_type_id,
-            site_types(*)
+            site_types(name)
             """
         ).eq("id", poi_id).execute()
         
