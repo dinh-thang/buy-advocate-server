@@ -1,10 +1,11 @@
 from typing import List
 from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import UUID4
+from pydantic import UUID4, BaseModel
 from uuid import UUID
 
 from src.schemas.filter import FilterCreate
 from src.schemas.market_status import MarketStatusCreate
+from src.schemas.order import BatchOrderUpdate
 from src.schemas.site_type import SiteTypeCreate
 from src.services.supabase_service import supabase_service
 from src.config import logger
@@ -13,6 +14,27 @@ from src.config import logger
 admin_router = APIRouter(
     prefix="/admin",
 )
+
+
+# TEMPLATE FILTERS TEMPLATE FILTERS TEMPLATE FILTERS TEMPLATE FILTERS TEMPLATE FILTERS TEMPLATE FILTERS
+@admin_router.get("/template-filters",
+    tags=["admin/template-filters"],
+    operation_id="get_template_filters",
+    summary="Get all template filters",
+    description="Retrieves all template filters from the database"
+)
+async def get_template_filters():
+    try:
+        supabase = await supabase_service.client
+        response = await supabase.table("template_filters").select("*").order("order").execute()
+        
+        if not response.data:
+            return []
+            
+        return response.data
+    except Exception as e:
+        logger.error(f"Error fetching template filters: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
@@ -64,7 +86,7 @@ async def create_filter(
     
 
 
-@admin_router.post("/site_type_market_status_filters",
+@admin_router.post("/site-type-market-status-filters",
     tags=["admin/filters"],
     operation_id="assign_filters",
     summary="Assign filters to site type and market status",
@@ -129,7 +151,7 @@ async def get_all_filters():
 )
 async def update_filter(
     filter_id: UUID4,
-    filter_name: str = Body(..., embed=True),
+    filter_type: str = Body(..., embed=True),
     filter_data: dict = Body(..., embed=True)
 ):
     try:
@@ -137,7 +159,7 @@ async def update_filter(
         
         # Prepare update data
         update_data = {
-            "name": filter_name,
+            "filter_type": filter_type,
             "filter_data": filter_data
         }
         
@@ -180,7 +202,7 @@ async def delete_filter(filter_id: UUID4):
 
 
 # SITE TYPES SITE TYPES SITE TYPES SITE TYPES SITE TYPES SITE TYPES SITE TYPES SITE TYPES
-@admin_router.post("/site_types",
+@admin_router.post("/site-types",
     tags=["admin/site-types"],
     operation_id="create_site_type",
     summary="Create a new site type",
@@ -208,7 +230,7 @@ async def create_site_type(site_type: SiteTypeCreate):
 
 
 
-@admin_router.patch("/site_types/{site_type_id}",
+@admin_router.patch("/site-types/{site_type_id}",
     tags=["admin/site-types"],
     operation_id="update_site_type",
     summary="Update a site type",
@@ -229,7 +251,7 @@ async def update_site_type_name(site_type_id: UUID4, name: str = Body(..., embed
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@admin_router.delete("/site_types/{site_type_id}",
+@admin_router.delete("/site-types/{site_type_id}",
     tags=["admin/site-types"],
     operation_id="delete_site_type",
     summary="Delete a site type",
@@ -256,7 +278,7 @@ async def delete_site_type(site_type_id: UUID4):
 
 
 # MARKET STATUSES MARKET STATUSES MARKET STATUSES MARKET STATUSES MARKET STATUSES MARKET STATUSES
-@admin_router.post("/market_status",
+@admin_router.post("/market-status",
     tags=["admin/market-status"],
     operation_id="create_market_status",
     summary="Create a new market status",
@@ -284,7 +306,7 @@ async def create_market_status(market_status: MarketStatusCreate):
 
 
 
-@admin_router.patch("/market_status/{market_status_id}",
+@admin_router.patch("/market-status/{market_status_id}",
     tags=["admin/market-status"],
     operation_id="update_market_status",
     summary="Update a market status",
@@ -305,7 +327,7 @@ async def update_market_status_name(market_status_id: UUID4, name: str = Body(..
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@admin_router.delete("/market_status/{market_status_id}",
+@admin_router.delete("/market-status/{market_status_id}",
     tags=["admin/market-status"],
     operation_id="delete_market_status",
     summary="Delete a market status",
@@ -328,4 +350,42 @@ async def delete_market_status(market_status_id: UUID4):
         return {"message": "Market status deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting market status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
+
+@admin_router.post("/site-types/batch-order",
+    tags=["admin/site-types"],
+    operation_id="update_site_types_order",
+    summary="Update orders of multiple site types",
+    description="Updates the order of multiple site types in a single operation"
+)
+async def update_site_types_order(updates: BatchOrderUpdate):
+    try:
+        supabase = await supabase_service.client
+        
+        # Create a list of updates
+        update_operations = []
+        for item in updates.updates:
+            update_operations.append(
+                supabase.table("site_types")
+                .update({"order": item.order})
+                .eq("id", item.id)
+                .execute()
+            )
+        
+        # Execute all updates in parallel
+        import asyncio
+        results = await asyncio.gather(*update_operations, return_exceptions=True)
+        
+        # Check for errors
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            logger.error(f"Errors updating site types order: {errors}")
+            raise HTTPException(status_code=500, detail="Failed to update some site types")
+            
+        return {"message": "Orders updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating site types order: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")

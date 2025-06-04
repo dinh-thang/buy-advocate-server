@@ -12,7 +12,6 @@ class ProjectBase(BaseSchema):
 
 class ProjectCreate(ProjectBase):
     site_type_id: UUID4
-    user_id: UUID4
     market_status_id: UUID4
     is_active: bool = Field(default=True, description="Whether the project is active")
 

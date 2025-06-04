@@ -87,11 +87,14 @@ async def get_all_projects(
 
 
 @project_router.post("/")
-async def create_project(project: ProjectCreate):
+async def create_project(project: ProjectCreate, user_id: str = Depends(get_current_user)):
     try:
         supabase = await supabase_service.client
         # Convert the project data to a dictionary and ensure UUIDs are strings
         project_data = project.model_dump(exclude={"id", "created_at"})
+        
+        # Add user_id from authentication
+        project_data["user_id"] = user_id
         
         for key, value in project_data.items():
             if isinstance(value, UUID):

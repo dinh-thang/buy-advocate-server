@@ -32,12 +32,17 @@ async def load_default_filters(
         ).eq("site_type_id", str(site_type_id)).eq("market_status_id", str(market_status_id)).execute()
 
         if not response.data:
-            logger.error(f"No default filters found for site_type_id: {site_type_id} and market_status_id: {market_status_id}")
-            raise HTTPException(status_code=404, detail="No default filters found for the given site type and market status")
+            logger.info(f"No default filters found for site_type_id: {site_type_id} and market_status_id: {market_status_id}")
+            return []
 
-        # Extract just the filters from the response
-        filters = [item["filters"] for item in response.data]
-        return filters
+        # Extract filters and sort them by order
+        filters = []
+        for item in response.data:
+            if item["filters"]:
+                filters.append(item["filters"])
+        
+        sorted_filters = sorted(filters, key=lambda x: x["order"])
+        return sorted_filters
     except Exception as e:
         logger.error(f"Error loading default filters: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")

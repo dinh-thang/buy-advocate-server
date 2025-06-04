@@ -7,7 +7,7 @@ from src.schemas import BaseSchema
 class FilterBase(BaseSchema):
     filter_type: str
     filter_data: Dict[str, Any] = Field(..., description="Filter data as a JSON object")
-    db_column_name: str
+    db_column_name: Optional[str] = Field(default=None, description="Database column name, optional for some filter types")
     order: int = Field(default=0, description="Order of the filter")
     is_open: bool = Field(default=False, description="Whether the filter is open")
 

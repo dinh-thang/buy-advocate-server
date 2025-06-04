@@ -14,7 +14,7 @@ site_type_router = APIRouter(prefix="/site-types", tags=["site-types"])
 async def get_all_site_types():
     try:
         supabase = await supabase_service.client
-        response = await supabase.table("site_types").select("id, name, icon, order").execute()
+        response = await supabase.table("site_types").select("id, name, icon, order").order("order").execute()
         
         if not response.data:
             return []
