@@ -147,12 +147,14 @@ async def get_all_filters():
     tags=["admin/filters"],
     operation_id="update_filter",
     summary="Update a filter",
-    description="Updates the name and filter data of an existing filter"
+    description="Updates the filter fields including type, data, column name, and open state"
 )
 async def update_filter(
     filter_id: UUID4,
     filter_type: str = Body(..., embed=True),
-    filter_data: dict = Body(..., embed=True)
+    filter_data: dict = Body(..., embed=True),
+    db_column_name: str = Body(None, embed=True),
+    is_open: bool = Body(None, embed=True)
 ):
     try:
         supabase = await supabase_service.client
@@ -162,6 +164,12 @@ async def update_filter(
             "filter_type": filter_type,
             "filter_data": filter_data
         }
+        
+        # Only include optional fields if they are provided
+        if db_column_name is not None:
+            update_data["db_column_name"] = db_column_name
+        if is_open is not None:
+            update_data["is_open"] = is_open
         
         response = await supabase.table("filters").update(update_data).eq("id", str(filter_id)).execute()
         
@@ -198,6 +206,46 @@ async def delete_filter(filter_id: UUID4):
         return {"message": "Filter deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting filter: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@admin_router.post("/filters/batch-order",
+    tags=["admin/filters"],
+    operation_id="update_filters_order",
+    summary="Update orders of multiple filters",
+    description="Updates the order of multiple filters for a specific site type and market status combination"
+)
+async def update_filters_order(
+    site_type_id: UUID4,
+    market_status_id: UUID4,
+    updates: BatchOrderUpdate
+):
+    try:
+        supabase = await supabase_service.client
+        
+        # Create a list of updates
+        update_operations = []
+        for item in updates.updates:
+            update_operations.append(
+                supabase.table("filters")
+                .update({"order": item.order})
+                .eq("id", item.id)
+                .execute()
+            )
+        
+        # Execute all updates in parallel
+        import asyncio
+        results = await asyncio.gather(*update_operations, return_exceptions=True)
+        
+        # Check for errors
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            logger.error(f"Errors updating filters order: {errors}")
+            raise HTTPException(status_code=500, detail="Failed to update some filters")
+            
+        return {"message": "Filter orders updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating filter orders: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
