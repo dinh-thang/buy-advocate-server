@@ -26,26 +26,17 @@ def apply_min_max_filter(query, db_column_name, filter_data):
     """
     min_value = filter_data.get('min')
     max_value = filter_data.get('max')
-
-    logger.info(f"Applying min-max filter to {db_column_name}")
-    logger.info(f"Filter data: {filter_data}")
-    logger.info(f"Min value: {min_value}, Max value: {max_value}")
     
     try:
         if min_value is not None:
             query = query.gte(db_column_name, min_value)
-            logger.info(f"Added gte filter: {db_column_name} >= {min_value}")
         if max_value is not None:
             query = query.lte(db_column_name, max_value)
-            logger.info(f"Added lte filter: {db_column_name} <= {max_value}")
         
-        # Log the current query state (this might not show the full SQL but helps with debugging)
-        logger.info(f"Query object after applying {db_column_name} filter: {query}")
+        logger.info(f"✅ Applied range filter: {db_column_name} [{min_value}-{max_value}]")
         
     except Exception as e:
-        logger.error(f"Error applying min-max filter to {db_column_name}: {e}")
-        logger.error(f"This might indicate the column doesn't exist or has incompatible data type")
-        # Return the original query if filtering fails
+        logger.error(f"❌ Error applying range filter to {db_column_name}: {e}")
         
     return query
 
@@ -61,24 +52,17 @@ def apply_zone_filter(query, db_column_name, filter_data):
     """
     values = filter_data.get('values', []) if isinstance(filter_data, dict) else []
     
-    logger.info(f"Applying zone filter to {db_column_name}")
-    logger.info(f"Filter data: {filter_data}")
-    logger.info(f"Zone values to filter: {values}")
-    
     if not values:
-        logger.info("No zone values provided, returning original query")
+        logger.info(f"⚠️ No zone values provided for {db_column_name}")
         return query
     
     try:
         # Use the overlap operator (&&) to check if the array contains ANY of the specified values
-        # This will match records where the array has at least one element in common with the filter values
         query = query.overlaps(db_column_name, values)
-        logger.info(f"Added overlap filter for {db_column_name}: array overlaps with {values}")
+        logger.info(f"✅ Applied zone filter: {db_column_name} overlaps {values}")
         
     except Exception as e:
-        logger.error(f"Error applying zone filter to {db_column_name}: {e}")
-        logger.error(f"This might indicate the column doesn't exist or is not an array type")
-        # Return the original query if filtering fails
+        logger.error(f"❌ Error applying zone filter to {db_column_name}: {e}")
         
     return query
 
@@ -95,25 +79,23 @@ def apply_single_value_filter(query, db_column_name, filter_data):
     """
     values = filter_data.get('values', []) if isinstance(filter_data, dict) else []
     
-    logger.info(f"Applying single value filter to {db_column_name}")
-    logger.info(f"Filter data: {filter_data}")
-    logger.info(f"Values to filter: {values}")
-    
     if not values:
-        logger.info("No values provided, returning original query")
+        logger.info(f"⚠️ No values provided for {db_column_name}")
         return query
     
-    # Check if we're dealing with an array column (zones)
-    if db_column_name == 'zones':
-        # For array columns, use the @> operator to check if array contains ALL specified values
-        # This will match records that contain ALL of the specified values
-        query = query.contains(db_column_name, values)
-        logger.info(f"Added contains filter for zones: {values}")
-    else:
-        # For text columns, use ilike for case-insensitive comparison
-        for value in values:
-            query = query.ilike(db_column_name, f'%{value}%')
-            logger.info(f"Added ilike filter: {db_column_name} LIKE '%{value}%'")
+    try:
+        # Check if we're dealing with an array column (zones)
+        if db_column_name == 'zones':
+            query = query.contains(db_column_name, values)
+            logger.info(f"✅ Applied array contains filter: {db_column_name} contains {values}")
+        else:
+            # For text columns, use ilike for case-insensitive comparison
+            for value in values:
+                query = query.ilike(db_column_name, f'%{value}%')
+            logger.info(f"✅ Applied text filter: {db_column_name} LIKE {values}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error applying single value filter to {db_column_name}: {e}")
         
     return query 
 
@@ -128,29 +110,22 @@ def apply_exact_match_filter(query, db_column_name, filter_value):
     :param filter_value: The exact value to match (can contain comma-separated values for OR logic)
     :return: Modified query object
     """
-    logger.info(f"Applying exact match filter to {db_column_name}")
-    logger.info(f"Filter value: {filter_value}")
-    
     if not filter_value:
-        logger.info("No filter value provided, returning original query")
+        logger.info(f"⚠️ No filter value provided for {db_column_name}")
         return query
     
     try:
         # Handle comma-separated values as OR conditions (like "for-sale, for-lease")
-        # This means we want records that match EXACTLY "for-sale" OR EXACTLY "for-lease"
         if "," in filter_value:
             values = [v.strip() for v in filter_value.split(",")]
-            # Use 'in' operator for multiple exact values (OR logic)
             query = query.in_(db_column_name, values)
-            logger.info(f"Added exact match 'in' filter: {db_column_name} IN {values}")
+            logger.info(f"✅ Applied exact match filter: {db_column_name} IN {values}")
         else:
-            # Single exact match
             query = query.eq(db_column_name, filter_value)
-            logger.info(f"Added exact match filter: {db_column_name} = '{filter_value}'")
+            logger.info(f"✅ Applied exact match filter: {db_column_name} = '{filter_value}'")
         
     except Exception as e:
-        logger.error(f"Error applying exact match filter to {db_column_name}: {e}")
-        # Return the original query if filtering fails
+        logger.error(f"❌ Error applying exact match filter to {db_column_name}: {e}")
         
     return query 
 
@@ -159,8 +134,8 @@ def apply_exact_match_filter(query, db_column_name, filter_value):
 filter_data format:
 {
     'values': [
-        {'db_column_name': 'childcare_demand_ratio_1km', 'value': 2},
-        {'db_column_name': 'childcare_demand_ratio_2km', 'value': 5},
+        {'db_column_name': 'distance_to_primary', 'value': 1, 'isCloserTo': True},
+        {'db_column_name': 'distance_to_train', 'value': 1.2, 'isCloserTo': True},
     ]
 }
 """
@@ -168,41 +143,41 @@ def apply_distance_to_poi_filter(query, filter_data):
     """
     Applies a distance to POI filter to a Supabase query.
     :param query: The Supabase query object
-    :param filter_data: Dict with 'value' key containing list of filters, each with 'db_column_name' and 'distance'
+    :param filter_data: Dict with 'values' key containing list of filters, each with 'db_column_name', 'value', and 'isCloserTo'
     :return: Modified query object
     """
     filters = filter_data.get('values', [])
     
-    logger.info(f"Applying distance to POI filters")
-    logger.info(f"Filter data: {filter_data}")
-    
     if not filters:
-        logger.info("No filters provided, returning original query")
+        logger.info("⚠️ No distance to POI filters provided")
         return query
     
     try:
+        applied_filters = []
         for filter_item in filters:
             column = filter_item.get('db_column_name')
             threshold = filter_item.get('value')
+            is_closer_to = filter_item.get('isCloserTo', True)
             
             if not column or threshold is None:
-                logger.warning(f"Skipping invalid filter item: {filter_item}")
+                logger.warning(f"⚠️ Skipping invalid POI filter: {filter_item}")
                 continue
-                
-            logger.info(f"Applying filter for column {column} with threshold {threshold}")
             
-            # First, filter out records where the ratio is 0
+            # Filter out records where distance is 0 (invalid data)
             query = query.not_.eq(column, 0)
             
-            # Then, match records where the database value is less than or equal to the threshold
-            query = query.lte(column, threshold)
-            
-            logger.info(f"Added demand ratio filter: {column} != 0 AND {column} <= {threshold}")
+            if is_closer_to:
+                query = query.lte(column, threshold)
+                applied_filters.append(f"{column} ≤ {threshold}km")
+            else:
+                query = query.gte(column, threshold)
+                applied_filters.append(f"{column} ≥ {threshold}km")
+        
+        if applied_filters:
+            logger.info(f"✅ Applied distance to POI filters: {', '.join(applied_filters)}")
         
     except Exception as e:
-        logger.error(f"Error applying demand ratio filters: {e}")
-        logger.error(f"This might indicate a column doesn't exist or has incompatible data type")
-        # Return the original query if filtering fails
+        logger.error(f"❌ Error applying distance to POI filters: {e}")
         
     return query
 
@@ -225,35 +200,20 @@ def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
     is_higher_than = filter_data.get('is_higher_than')
     value = filter_data.get('value')
     
-    logger.info(f"Applying supply demand ratio filter to {db_column_name}")
-    logger.info(f"Filter data: {filter_data}")
-    logger.info(f"Is higher than: {is_higher_than}, Value: {value}")
-    
-    if value is None:
-        logger.info("No value provided, returning original query")
-        return query
-    
-    if is_higher_than is None:
-        logger.warning("No 'is_higher_than' flag provided, returning original query")
+    if value is None or is_higher_than is None:
+        logger.warning(f"⚠️ Invalid supply demand ratio filter data for {db_column_name}")
         return query
     
     try:
         if is_higher_than:
-            # Match values higher than or equal to the input value
             query = query.gte(db_column_name, value)
-            logger.info(f"Added gte filter: {db_column_name} >= {value}")
+            logger.info(f"✅ Applied demand ratio filter: {db_column_name} ≥ {value}")
         else:
-            # Match values lower than or equal to the input value
             query = query.lte(db_column_name, value)
-            logger.info(f"Added lte filter: {db_column_name} <= {value}")
-        
-        # Log the current query state (this might not show the full SQL but helps with debugging)
-        logger.info(f"Query object after applying {db_column_name} filter: {query}")
+            logger.info(f"✅ Applied demand ratio filter: {db_column_name} ≤ {value}")
         
     except Exception as e:
-        logger.error(f"Error applying supply demand ratio filter to {db_column_name}: {e}")
-        logger.error(f"This might indicate the column doesn't exist or has incompatible data type")
-        # Return the original query if filtering fails
+        logger.error(f"❌ Error applying supply demand ratio filter to {db_column_name}: {e}")
         
     return query
 
