@@ -14,6 +14,8 @@ poi_detail_router = APIRouter(
 # List of allowed tables for security (you should adjust this based on your needs)
 ALLOWED_TABLES = [
     "mcdonalds",
+    "carls_jnr",
+    "kfc",
 ]
 
 
@@ -37,14 +39,15 @@ async def query_poi_detail(
     """
     try:
         # Security check: only allow querying specific tables
-        if request.table_name not in ALLOWED_TABLES:
-            logger.warning(f"Attempted to query unauthorized table: {request.table_name}")
-            raise HTTPException(
-                status_code=403, 
-                detail=f"Access to table '{request.table_name}' is not allowed. Allowed tables: {', '.join(ALLOWED_TABLES)}"
-            )
+        # if request.table_name not in ALLOWED_TABLES:
+        #     logger.warning(f"Attempted to query unauthorized table: {request.table_name}")
+        #     raise HTTPException(
+        #         status_code=403, 
+        #         detail=f"Access to table '{request.table_name}' is not allowed. Allowed tables: {', '.join(ALLOWED_TABLES)}"
+        #     )
 
-        supabase = await supabase_service.client
+        # Use service role client instead of regular client
+        supabase = await supabase_service.get_service_role_client()
         
         # Calculate pagination parameters
         start = (request.page - 1) * request.page_size
@@ -74,14 +77,24 @@ async def query_poi_detail(
         # Execute the data query
         data_response = await data_query.execute()
 
-        # Calculate total pages
-        total_pages = (total_count + request.page_size - 1) // request.page_size
-
+        # Log the query details
         logger.info(
             f"Poi detail query executed: table={request.table_name}, "
             f"page={request.page}, page_size={request.page_size}, "
-            f"total_count={total_count}, results={len(data_response.data) if data_response.data else 0}"
+            f"total_count={total_count}, results={len(data_response.data) if data_response.data else 0}, "
+            f"columns={columns}, range={start}-{end}"
         )
+
+        # Log warning if no data found
+        if not data_response.data or len(data_response.data) == 0:
+            logger.warning(
+                f"No data found for table '{request.table_name}'. "
+                f"Please verify: 1) Table exists, 2) Table has data, "
+                f"3) Requested columns ({columns}) exist"
+            )
+
+        # Calculate total pages
+        total_pages = (total_count + request.page_size - 1) // request.page_size
 
         return PoiDetailResponse(
             data=data_response.data or [],

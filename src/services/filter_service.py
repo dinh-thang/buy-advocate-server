@@ -12,8 +12,19 @@ MISSING FILTERS FOR:
 """
 
 import logging
+from postgrest.exceptions import APIError
 
 logger = logging.getLogger(__name__)
+
+
+def is_column_not_exist_error(e: Exception) -> bool:
+    """
+    Check if the error is due to a non-existent column
+    """
+    if isinstance(e, APIError):
+        error_message = getattr(e, 'message', '').lower()
+        return 'column' in error_message and 'does not exist' in error_message
+    return False
 
 
 def apply_min_max_filter(query, db_column_name, filter_data):
@@ -36,6 +47,9 @@ def apply_min_max_filter(query, db_column_name, filter_data):
         logger.info(f"✅ Applied range filter: {db_column_name} [{min_value}-{max_value}]")
         
     except Exception as e:
+        if is_column_not_exist_error(e):
+            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+            return query
         logger.error(f"❌ Error applying range filter to {db_column_name}: {e}")
         
     return query
@@ -62,6 +76,9 @@ def apply_zone_filter(query, db_column_name, filter_data):
         logger.info(f"✅ Applied zone filter: {db_column_name} overlaps {values}")
         
     except Exception as e:
+        if is_column_not_exist_error(e):
+            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+            return query
         logger.error(f"❌ Error applying zone filter to {db_column_name}: {e}")
         
     return query
@@ -95,6 +112,9 @@ def apply_single_value_filter(query, db_column_name, filter_data):
             logger.info(f"✅ Applied text filter: {db_column_name} LIKE {values}")
         
     except Exception as e:
+        if is_column_not_exist_error(e):
+            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+            return query
         logger.error(f"❌ Error applying single value filter to {db_column_name}: {e}")
         
     return query 
@@ -125,6 +145,9 @@ def apply_exact_match_filter(query, db_column_name, filter_value):
             logger.info(f"✅ Applied exact match filter: {db_column_name} = '{filter_value}'")
         
     except Exception as e:
+        if is_column_not_exist_error(e):
+            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+            return query
         logger.error(f"❌ Error applying exact match filter to {db_column_name}: {e}")
         
     return query 
@@ -163,15 +186,23 @@ def apply_distance_to_poi_filter(query, filter_data):
                 logger.warning(f"⚠️ Skipping invalid POI filter: {filter_item}")
                 continue
             
-            # Filter out records where distance is 0 (invalid data)
-            query = query.not_.eq(column, 0)
-            
-            if is_closer_to:
-                query = query.lte(column, threshold)
-                applied_filters.append(f"{column} ≤ {threshold}km")
-            else:
-                query = query.gte(column, threshold)
-                applied_filters.append(f"{column} ≥ {threshold}km")
+            try:
+                # Filter out records where distance is 0 (invalid data)
+                query = query.not_.eq(column, 0)
+                
+                if is_closer_to:
+                    query = query.lte(column, threshold)
+                    applied_filters.append(f"{column} ≤ {threshold}km")
+                else:
+                    query = query.gte(column, threshold)
+                    applied_filters.append(f"{column} ≥ {threshold}km")
+                    
+            except Exception as e:
+                if is_column_not_exist_error(e):
+                    logger.warning(f"⚠️ Skipping filter for non-existent column: {column}")
+                    continue
+                logger.error(f"❌ Error applying distance filter to {column}: {e}")
+                continue
         
         if applied_filters:
             logger.info(f"✅ Applied distance to POI filters: {', '.join(applied_filters)}")
@@ -200,20 +231,23 @@ def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
     is_higher_than = filter_data.get('is_higher_than')
     value = filter_data.get('value')
     
-    if value is None or is_higher_than is None:
-        logger.warning(f"⚠️ Invalid supply demand ratio filter data for {db_column_name}")
+    if value is None:
+        logger.info(f"⚠️ No value provided for {db_column_name}")
         return query
     
     try:
         if is_higher_than:
             query = query.gte(db_column_name, value)
-            logger.info(f"✅ Applied demand ratio filter: {db_column_name} ≥ {value}")
+            logger.info(f"✅ Applied ratio filter: {db_column_name} ≥ {value}")
         else:
             query = query.lte(db_column_name, value)
-            logger.info(f"✅ Applied demand ratio filter: {db_column_name} ≤ {value}")
-        
+            logger.info(f"✅ Applied ratio filter: {db_column_name} ≤ {value}")
+            
     except Exception as e:
-        logger.error(f"❌ Error applying supply demand ratio filter to {db_column_name}: {e}")
+        if is_column_not_exist_error(e):
+            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+            return query
+        logger.error(f"❌ Error applying ratio filter to {db_column_name}: {e}")
         
     return query
 

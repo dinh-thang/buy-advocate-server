@@ -1,2 +1,4 @@
 fastapi[standard]
 supabase==2.15.1
+python-multipart
+dotenv

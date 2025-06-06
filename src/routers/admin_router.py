@@ -13,10 +13,12 @@ from src.schemas.poi import POI, POICreate, POIUpdate
 from src.schemas.site_type import SiteTypeCreate
 from src.services.supabase_service import supabase_service
 from src.config import logger
+from src.middleware.auth import get_current_user
 
 
 admin_router = APIRouter(
     prefix="/admin",
+    tags=["admin"]
 )
 
 
@@ -694,88 +696,176 @@ async def upload_csv_table(
                 detail=f"Invalid CSV columns. Expected: {', '.join(sorted(expected_columns))}. {' | '.join(error_parts)}"
             )
         
-        # Read all rows into memory (since we're not validating data types, this should be fast)
-        rows = list(csv_reader)
+        # Read all rows into memory and validate data types
+        rows = []
+        for row_idx, row in enumerate(csv_reader, start=1):
+            # Skip empty rows (where all values are empty or just whitespace)
+            if not any(str(value).strip() for value in row.values()):
+                continue
+                
+            cleaned_row = row   
+            
+            # Validate id (must be a valid integer)
+            try:
+                if not cleaned_row['id']:
+                    raise ValueError("Empty ID value")
+                int(cleaned_row['id'])  # Try to convert to int to validate
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid ID in row {row_idx}: {cleaned_row['id']}. ID must be a valid integer."
+                )
+            
+            # Validate latitude (must be a valid float between -90 and 90)
+            try:
+                if not cleaned_row['latitude']:
+                    raise ValueError("Empty latitude value")
+                lat = float(cleaned_row['latitude'])
+                if lat < -90 or lat > 90:
+                    raise ValueError("Latitude must be between -90 and 90")
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid latitude in row {row_idx}: {cleaned_row['latitude']}. {str(e)}"
+                )
+            
+            # Validate longitude (must be a valid float between -180 and 180)
+            try:
+                if not cleaned_row['longitude']:
+                    raise ValueError("Empty longitude value")
+                lon = float(cleaned_row['longitude'])
+                if lon < -180 or lon > 180:
+                    raise ValueError("Longitude must be between -180 and 180")
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid longitude in row {row_idx}: {cleaned_row['longitude']}. {str(e)}"
+                )
+            
+            # Validate business_name (must not be empty)
+            if not cleaned_row['business_name']:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Empty business name in row {row_idx}"
+                )
+            
+            rows.append(cleaned_row)
+            
         if not rows:
             raise HTTPException(status_code=400, detail="CSV file contains no data rows")
         
-        supabase = await supabase_service.client
-        
-        # Check if table already exists
         try:
-            table_check = await supabase.table(table_name).select("*").limit(1).execute()
-            if table_check.data is not None:  # Table exists and query succeeded
-                raise HTTPException(status_code=400, detail=f"Table '{table_name}' already exists")
-        except Exception as e:
-            # If the error is "relation does not exist" or similar, the table doesn't exist, which is what we want
-            if "does not exist" not in str(e).lower():
-                # Some other error occurred
-                logger.error(f"Error checking table existence: {str(e)}")
-                raise HTTPException(status_code=500, detail="Error checking if table exists")
-        
-        # Create the table using a custom Supabase function
-        # First, call the RPC function to create the table with the required schema
-        try:
+            # Get service_role client for admin operations
+            supabase = await supabase_service.get_service_role_client()
+            
+            # Create the table
+            logger.info(f"Creating table: {table_name}")
             create_result = await supabase.rpc('create_csv_table', {
                 'p_table_name': table_name
             }).execute()
             
             if not create_result.data:
-                logger.error(f"Failed to create table {table_name}")
+                logger.error(f"Failed to create table: {table_name}")
                 raise HTTPException(status_code=500, detail="Failed to create table")
+            
+            # Add a small delay to ensure table is ready
+            import asyncio
+            await asyncio.sleep(2)
+            
+            # Verify table exists and is accessible
+            try:
+                await supabase.from_(table_name).select("*", count="exact").limit(0).execute()
+                logger.info(f"Table created successfully: {table_name}")
+            except Exception as ve:
+                logger.error(f"Table verification failed: {table_name} - {str(ve)}")
+                try:
+                    await supabase.rpc('drop_table', {'p_table_name': table_name}).execute()
+                except Exception as e:
+                    logger.error(f"Failed to cleanup table after verification error: {table_name} - {str(e)}")
+                raise HTTPException(status_code=500, detail="Table created but not accessible. Please try again.")
                 
         except Exception as e:
             error_message = str(e).lower()
             if "already exists" in error_message or "duplicate" in error_message:
                 raise HTTPException(status_code=400, detail=f"Table '{table_name}' already exists")
             else:
-                logger.error(f"Error creating table {table_name}: {str(e)}")
+                logger.error(f"Error creating table: {table_name} - {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Failed to create table: {str(e)}")
         
         # Prepare data for batch insert
         insert_data = []
         for row in rows:
-            insert_data.append({
-                'id': row['id'],
-                'latitude': row['latitude'],
-                'longitude': row['longitude'],
-                'business_name': row['business_name']
-            })
-        
-        # Insert data in batches to handle large files
+            try:
+                # Clean and normalize the business name
+                business_name = str(row['business_name'])
+                # Replace smart quotes with regular quotes if present
+                business_name = business_name.replace('"', '"').replace('"', '"')
+                business_name = business_name.replace("'", "'").replace("'", "'")
+                
+                insert_data.append({
+                    'id': int(row['id']),
+                    'latitude': float(row['latitude']),
+                    'longitude': float(row['longitude']),
+                    'business_name': business_name
+                })
+            except (ValueError, TypeError) as e:
+                logger.error(f"Data conversion error: Row ID {row.get('id', 'unknown')} - {str(e)}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Data conversion error: {str(e)} for row with ID {row.get('id', 'unknown')}"
+                )
+
+        # Insert data in batches
         batch_size = 1000
         total_rows = len(insert_data)
         inserted_rows = 0
+        total_batches = (total_rows + batch_size - 1) // batch_size
+        
+        logger.info(f"Starting data insertion: {total_rows} rows in {total_batches} batches")
         
         for i in range(0, total_rows, batch_size):
             batch = insert_data[i:i + batch_size]
+            batch_number = (i // batch_size) + 1
             
             try:
-                insert_result = await supabase.table(table_name).insert(batch).execute()
-                if not insert_result.data:
-                    logger.error(f"Failed to insert batch {i//batch_size + 1} for table {table_name}")
-                    # If this is not the first batch, we have a partially created table
-                    if i > 0:
-                        try:
-                            await supabase.rpc('drop_table', {'p_table_name': table_name}).execute()
-                        except:
-                            pass  # Table cleanup failed, but we still need to report the original error
-                    raise HTTPException(status_code=500, detail=f"Failed to insert data at batch {i//batch_size + 1}")
+                # Convert the batch to a list of dicts with basic types
+                sanitized_batch = []
+                for row in batch:
+                    sanitized_row = {
+                        'id': row['id'],
+                        'latitude': row['latitude'],
+                        'longitude': row['longitude'],
+                        'business_name': row['business_name']
+                    }
+                    sanitized_batch.append(sanitized_row)
+                
+                # Try inserting with from_ method instead of table
+                insert_result = await supabase.from_(table_name).insert(sanitized_batch).execute()
+                
+                # Check if the response is valid
+                if not insert_result or not hasattr(insert_result, 'data'):
+                    error_msg = f"Invalid response from server for batch {batch_number}/{total_batches}"
+                    logger.error(error_msg)
+                    raise HTTPException(status_code=500, detail=error_msg)
+                
+                if insert_result.data is None:
+                    error_msg = f"Batch {batch_number}/{total_batches} insert failed"
+                    if hasattr(insert_result, 'error'):
+                        error_msg += f": {insert_result.error}"
+                    logger.error(error_msg)
+                    raise HTTPException(status_code=500, detail=error_msg)
                 
                 inserted_rows += len(batch)
-                logger.info(f"Inserted batch {i//batch_size + 1}/{(total_rows + batch_size - 1)//batch_size} for table {table_name}")
+                logger.info(f"Inserted batch {batch_number}/{total_batches} ({len(batch)} rows)")
                 
             except Exception as e:
-                logger.error(f"Error inserting batch {i//batch_size + 1}: {str(e)}")
-                # Clean up by dropping the table if we've partially inserted data
-                if i > 0:
-                    try:
-                        await supabase.rpc('drop_table', {'p_table_name': table_name}).execute()
-                    except:
-                        pass  # Table cleanup failed, but we still need to report the original error
-                raise HTTPException(status_code=500, detail=f"Failed to insert data: {str(e)}")
+                logger.error(f"Error inserting batch {batch_number}/{total_batches}: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to insert data (batch {batch_number}/{total_batches}): {str(e)}"
+                )
         
-        logger.info(f"Successfully created table {table_name} with {inserted_rows} rows")
+        logger.info(f"Upload completed: {inserted_rows} rows inserted into table {table_name}")
         return {
             "message": f"Table '{table_name}' created successfully",
             "table_name": table_name,

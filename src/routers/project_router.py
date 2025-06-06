@@ -4,6 +4,7 @@ from pydantic import UUID4
 from uuid import UUID
 
 from src.services.supabase_service import supabase_service
+from src.services.project_service import project_service
 from src.schemas.project import ProjectCreate, ProjectUpdate
 from src.config import logger
 from src.middleware.auth import get_current_user
@@ -48,6 +49,7 @@ async def get_project(project_id: UUID4):
                 filter_data,
                 db_column_name,
                 order,
+                display_name,
                 is_open
             )
             """
@@ -129,6 +131,7 @@ async def create_project(project: ProjectCreate, user_id: str = Depends(get_curr
                     "filter_data": filter_data["filter_data"],
                     "db_column_name": filter_data["db_column_name"],
                     "order": filter_data["order"],
+                    "display_name": filter_data["display_name"],
                     "is_open": filter_data["is_open"]
                 }
                 user_filters.append(user_filter)
@@ -155,6 +158,7 @@ async def create_project(project: ProjectCreate, user_id: str = Depends(get_curr
                 filter_type,
                 filter_data,
                 db_column_name,
+                display_name,
                 order,
                 is_open
             )
@@ -232,6 +236,7 @@ async def update_project(project_id: UUID4, project: ProjectUpdate):
                         "project_id": str(project_id),
                         "filter_type": filter_data["filter_type"],
                         "filter_data": filter_data["filter_data"],
+                        "display_name": filter_data["display_name"],
                         "db_column_name": filter_data["db_column_name"],
                         "order": filter_data["order"],
                         "is_open": filter_data["is_open"]
@@ -259,4 +264,19 @@ async def delete_project(project_id: UUID4):
         return {"message": "Project deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting project {project_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@project_router.post("/post-signup/{user_id}")
+async def handle_post_signup(user_id: str):
+    """Handle post-signup actions for a new user"""
+    try:
+        # Create default project for the user
+        project = await project_service.create_default_project(user_id)
+        if not project:
+            raise HTTPException(status_code=500, detail="Failed to create default project")
+        
+        return {"success": True, "project": project}
+    except Exception as e:
+        logger.error(f"Error in post-signup handling for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
