@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from typing import List
 from pydantic import UUID4
 from uuid import UUID
+import asyncio
 
 from src.services.supabase_service import supabase_service
 from src.services.project_service import project_service
@@ -23,7 +24,6 @@ async def get_project(project_id: UUID4):
         response = await supabase.table("projects").select(
             """
             id,
-            created_at,
             title,
             site_type_id,
             market_status_id,
@@ -279,4 +279,99 @@ async def handle_post_signup(user_id: str):
         return {"success": True, "project": project}
     except Exception as e:
         logger.error(f"Error in post-signup handling for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@project_router.get("/combined-data/{project_id}")
+async def get_project_with_related_data(project_id: UUID4):
+    """
+    Get project data along with related market statuses, site types, and POIs in a single call
+    """
+    try:
+        supabase = await supabase_service.client
+        
+        # Fetch all data concurrently using asyncio.gather
+        async def get_project_data():
+            response = await supabase.table("projects").select(
+                """
+                id,
+                title,
+                site_type_id,
+                market_status_id,
+                market_status(*),
+                site_types(*),
+                user_filters(*)
+                """
+            ).eq("id", project_id).execute()
+            if not response.data:
+                raise HTTPException(status_code=404, detail="Project not found")
+            return response.data[0]
+            
+        async def get_default_filters(site_type_id, market_status_id):
+            response = await supabase.table("site_type_market_status_filters").select(
+                """
+                *,
+                filters(
+                    id,
+                    filter_type,
+                    filter_data,
+                    db_column_name,
+                    order,
+                    display_name,
+                    is_open
+                )
+                """
+            ).eq("site_type_id", site_type_id).eq("market_status_id", market_status_id).execute()
+            return [item["filters"] for item in response.data] if response.data else []
+            
+        async def get_market_statuses():
+            response = await supabase.table("market_status").select("id, name").execute()
+            return response.data if response.data else []
+            
+        async def get_site_types():
+            response = await supabase.table("site_types").select("id, name, icon, order").order("order").execute()
+            return response.data if response.data else []
+            
+        async def get_poi():
+            response = await supabase.table("poi").select(
+                """
+                id,
+                name,
+                db_column_name,
+                details_table_name,
+                icon_svg,
+                order,
+                site_type_id,
+                site_types(name),
+                details_table_name
+                """
+            ).order("order").execute()
+            return response.data if response.data else []
+        
+        # Execute all queries concurrently
+        project, market_statuses, site_types, poi = await asyncio.gather(
+            get_project_data(),
+            get_market_statuses(),
+            get_site_types(),
+            get_poi()
+        )
+        
+        # Fetch default filters after we have the project data
+        default_filters = await get_default_filters(
+            str(project["site_type_id"]), 
+            str(project["market_status_id"])
+        )
+        
+        # Combine all data
+        return {
+            "project": {**project, "default_filters": default_filters},
+            "market_statuses": market_statuses,
+            "site_types": site_types,
+            "poi": poi
+        }
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error fetching combined data for project {project_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
