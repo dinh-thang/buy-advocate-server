@@ -39,15 +39,22 @@ async def get_property_count(query):
 async def get_properties(
     filters: Optional[List[FilterBase]] = Body(default=None, description="List of filters to apply"),
     market_status: Optional[str] = Body(default=None, description="Market status to filter by"),
-    
-    page: int = Body(default=1, description="Page number (1-based)"),
-    page_size: int = Body(default=100, description="Number of records per page")
+    page: int = Body(default=1, ge=1, description="Page number (1-based)"),
+    page_size: int = Body(default=50, ge=1, le=50, description="Number of records per page, fixed at 50")
 ) -> Dict[str, Any]:
     supabase = await supabase_service.client
     
-    # Calculate range for pagination
+    # Log pagination request
+    logger.info(f"📄 Received request for page {page} with page size {page_size}")
+    
+    # Ensure page_size is always 50
+    page_size = 50
+    
+    # Calculate range for pagination (0-based for Supabase)
     start = (page - 1) * page_size
     end = start + page_size - 1
+    
+    logger.info(f"📄 Fetching records {start} to {end}")
     
     query = supabase.table(TABLE_NAME).select(
         # PROPERTY LISTING DETAILS
@@ -134,11 +141,11 @@ async def get_properties(
                     query = apply_zone_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
                     count_query = apply_zone_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
                 elif filter_type.lower() == "distance_to_poi":
-                    query = apply_distance_to_poi_filter(query, filter_obj.filter_data)
-                    count_query = apply_distance_to_poi_filter(count_query, filter_obj.filter_data)
+                    query = await apply_distance_to_poi_filter(query, filter_obj.filter_data)
+                    count_query = await apply_distance_to_poi_filter(count_query, filter_obj.filter_data)
                 elif filter_type.lower() == "supply_demand_ratio":
-                    query = apply_supply_demand_ratio_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
-                    count_query = apply_supply_demand_ratio_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
+                    query = await apply_supply_demand_ratio_filter(query, filter_obj.db_column_name, filter_obj.filter_data)
+                    count_query = await apply_supply_demand_ratio_filter(count_query, filter_obj.db_column_name, filter_obj.filter_data)
                 
                 # Track performance after filter
                 current_count = await get_property_count(count_query)
@@ -155,6 +162,13 @@ async def get_properties(
         # Get total count for final response
         count_response = await count_query.execute()
         total_count = count_response.count if count_response.count is not None else 0
+        
+        # Ensure total_count is a valid number
+        if not isinstance(total_count, (int, float)) or total_count < 0:
+            total_count = 0
+
+        # Calculate total pages
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
 
         # Apply pagination to the data query
         query = query.range(start, end)
@@ -163,13 +177,20 @@ async def get_properties(
         response = await query.execute()
         returned_count = len(response.data) if response.data else 0
         
-        # Final session summary
-        total_eliminated = initial_count - total_count
-        logger.info(f"🏁 FILTER SESSION END - Final: {total_count:,} | Total Eliminated: {total_eliminated:,} | Returned: {returned_count}")
+        # Final session summary with pagination info
+        logger.info(f"🏁 FILTER SESSION END - Final: {total_count:,} | Total Eliminated: {initial_count - total_count:,}")
+        logger.info(f"📄 PAGINATION - Page: {page}/{total_pages} | Items: {returned_count}/{page_size}")
 
         return {
-            "data": response.data,
-            "total_count": total_count
+            "data": response.data or [],
+            "pagination": {
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "current_page": page,
+                "page_size": page_size,
+                "has_next": page < total_pages,
+                "has_previous": page > 1
+            }
         }
     except APIError as e:
         if is_column_not_exist_error(e):
@@ -178,6 +199,13 @@ async def get_properties(
             logger.warning("⚠️ Final query failed due to non-existent column, returning empty results")
             return {
                 "data": [],
-                "total_count": 0
+                "pagination": {
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "current_page": page,
+                    "page_size": page_size,
+                    "has_next": False,
+                    "has_previous": False
+                }
             }
         raise

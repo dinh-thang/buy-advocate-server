@@ -162,7 +162,7 @@ filter_data format:
     ]
 }
 """
-def apply_distance_to_poi_filter(query, filter_data):
+async def apply_distance_to_poi_filter(query, filter_data):
     """
     Applies a distance to POI filter to a Supabase query.
     :param query: The Supabase query object
@@ -177,6 +177,7 @@ def apply_distance_to_poi_filter(query, filter_data):
     
     try:
         applied_filters = []
+        skipped_filters = []
         for filter_item in filters:
             column = filter_item.get('db_column_name')
             threshold = filter_item.get('value')
@@ -187,6 +188,16 @@ def apply_distance_to_poi_filter(query, filter_data):
                 continue
             
             try:
+                # Check if column exists
+                try:
+                    test_query = query.select(column)
+                    await test_query.execute()
+                except APIError as e:
+                    if is_column_not_exist_error(e):
+                        skipped_filters.append(column)
+                        continue
+                    raise e
+
                 # Filter out records where distance is 0 (invalid data)
                 query = query.not_.eq(column, 0)
                 
@@ -198,14 +209,13 @@ def apply_distance_to_poi_filter(query, filter_data):
                     applied_filters.append(f"{column} ≥ {threshold}km")
                     
             except Exception as e:
-                if is_column_not_exist_error(e):
-                    logger.warning(f"⚠️ Skipping filter for non-existent column: {column}")
-                    continue
                 logger.error(f"❌ Error applying distance filter to {column}: {e}")
                 continue
         
         if applied_filters:
             logger.info(f"✅ Applied distance to POI filters: {', '.join(applied_filters)}")
+        if skipped_filters:
+            logger.warning(f"⚠️ Skipped filters for non-existent columns: {', '.join(skipped_filters)}")
         
     except Exception as e:
         logger.error(f"❌ Error applying distance to POI filters: {e}")
@@ -220,7 +230,7 @@ filter_data format:
     'value': 0.5,
 }
 """
-def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
+async def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
     """
     Applies a supply demand ratio filter to a Supabase query.
     :param query: The Supabase query object
@@ -236,6 +246,16 @@ def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
         return query
     
     try:
+        # First check if the column exists by attempting a simple select
+        try:
+            test_query = query.select(db_column_name)
+            await test_query.execute()
+        except APIError as e:
+            if is_column_not_exist_error(e):
+                logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
+                return query
+            raise e
+
         if is_higher_than:
             query = query.gte(db_column_name, value)
             logger.info(f"✅ Applied ratio filter: {db_column_name} ≥ {value}")
@@ -244,9 +264,6 @@ def apply_supply_demand_ratio_filter(query, db_column_name, filter_data):
             logger.info(f"✅ Applied ratio filter: {db_column_name} ≤ {value}")
             
     except Exception as e:
-        if is_column_not_exist_error(e):
-            logger.warning(f"⚠️ Skipping filter for non-existent column: {db_column_name}")
-            return query
         logger.error(f"❌ Error applying ratio filter to {db_column_name}: {e}")
         
     return query
