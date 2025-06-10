@@ -1,9 +1,8 @@
-from fastapi import Request, HTTPException, Depends
+from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from functools import wraps, lru_cache
 from src.services.supabase_service import supabase_service
 from src.config import logger
-from datetime import datetime, timedelta
+from datetime import datetime
 
 security = HTTPBearer()
 
