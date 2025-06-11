@@ -37,10 +37,30 @@ class UserProfileService:
         """Get a user profile by user_id"""
         client = await supabase_service.client
         try:
+            # Get user profile data
             result = await client.table('user_profile').select("*").eq('user_id', str(user_id)).execute()
+            
             if not result.data:
                 return None
-            return UserProfileResponse(**result.data[0])
+            
+            profile_data = result.data[0]
+            
+            # Get auth user data using admin client
+            try:
+                admin_client = await supabase_service.get_service_role_client()
+                auth_result = await admin_client.auth.admin.get_user_by_id(str(user_id))
+                
+                if auth_result.user:
+                    profile_data['email'] = auth_result.user.email
+                    # Check for image_url in user_metadata (common with OAuth providers)
+                    user_metadata = auth_result.user.user_metadata or {}
+                    profile_data['image_url'] = user_metadata.get('avatar_url') or user_metadata.get('picture')
+            except Exception as auth_e:
+                logger.warning(f"Could not fetch auth user data for user {user_id}: {str(auth_e)}")
+                profile_data['email'] = None
+                profile_data['image_url'] = None
+            
+            return UserProfileResponse(**profile_data)
         except Exception as e:
             logger.error(f"Error getting user profile: {str(e)}")
             raise
@@ -49,10 +69,31 @@ class UserProfileService:
         """Get a user profile by profile id"""
         client = await supabase_service.client
         try:
+            # Get user profile data
             result = await client.table('user_profile').select("*").eq('id', str(profile_id)).execute()
+            
             if not result.data:
                 return None
-            return UserProfileResponse(**result.data[0])
+            
+            profile_data = result.data[0]
+            user_id = profile_data['user_id']
+            
+            # Get auth user data using admin client
+            try:
+                admin_client = await supabase_service.get_service_role_client()
+                auth_result = await admin_client.auth.admin.get_user_by_id(str(user_id))
+                
+                if auth_result.user:
+                    profile_data['email'] = auth_result.user.email
+                    # Check for image_url in user_metadata (common with OAuth providers)
+                    user_metadata = auth_result.user.user_metadata or {}
+                    profile_data['image_url'] = user_metadata.get('avatar_url') or user_metadata.get('picture')
+            except Exception as auth_e:
+                logger.warning(f"Could not fetch auth user data for user {user_id}: {str(auth_e)}")
+                profile_data['email'] = None
+                profile_data['image_url'] = None
+            
+            return UserProfileResponse(**profile_data)
         except Exception as e:
             logger.error(f"Error getting user profile: {str(e)}")
             raise

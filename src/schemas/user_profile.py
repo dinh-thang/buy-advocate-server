@@ -31,6 +31,9 @@ class UserProfileResponse(UserProfileBase):
     id: UUID
     user_id: UUID
     created_at: datetime
+    # Fields from auth.users table
+    email: Optional[str] = None
+    image_url: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,
