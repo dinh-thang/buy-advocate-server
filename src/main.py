@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from typing import Any
 
 from fastapi import APIRouter as FastAPIRouter
-from fastapi.types import DecoratedCallable
 from fastapi import APIRouter, FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,6 +19,7 @@ from src.routers.property_router import property_router
 from src.routers.site_type_router import site_type_router
 from src.routers.market_status_router import market_status_router
 from src.routers.poi_router import poi_router
+from src.routers.user_profile_router import user_profile_router
 
 
 app = FastAPI(
@@ -66,6 +66,8 @@ app.include_router(market_status_router, prefix="/api", dependencies=[Depends(ge
 app.include_router(poi_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(poi_detail_router, prefix="/api", dependencies=[Depends(get_current_user)])
 
+# User profile routes (mixed auth requirements)
+app.include_router(user_profile_router, prefix="/api")
 
 # Admin routes (you might want to add additional admin role checks)
 app.include_router(admin_router, prefix="/api", dependencies=[Depends(get_current_user)])

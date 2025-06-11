@@ -267,21 +267,6 @@ async def delete_project(project_id: UUID4):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@project_router.post("/post-signup/{user_id}")
-async def handle_post_signup(user_id: str):
-    """Handle post-signup actions for a new user"""
-    try:
-        # Create default project for the user
-        project = await project_service.create_default_project(user_id)
-        if not project:
-            raise HTTPException(status_code=500, detail="Failed to create default project")
-        
-        return {"success": True, "project": project}
-    except Exception as e:
-        logger.error(f"Error in post-signup handling for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @project_router.get("/combined-data/{project_id}")
 async def get_project_with_related_data(project_id: UUID4):
     """

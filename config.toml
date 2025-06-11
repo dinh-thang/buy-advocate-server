@@ -1,0 +1,3 @@
+[auth.email.template.confirmation]
+subject = "Confirm your sign up to Proptech"
+content_path = "./src/emails/sign-up-confirmation.html"

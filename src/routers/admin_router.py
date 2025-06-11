@@ -877,3 +877,28 @@ async def upload_csv_table(
     except Exception as e:
         logger.error(f"Error uploading CSV table: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# USER MANAGEMENT USER MANAGEMENT USER MANAGEMENT USER MANAGEMENT USER MANAGEMENT USER MANAGEMENT
+
+@admin_router.delete("/users/{user_id}",
+    tags=["admin/users"],
+    operation_id="delete_user",
+    summary="Delete a user",
+    description="Deletes a user from the auth.users table"
+)
+async def delete_user(
+    user_id: UUID = Path(..., description="ID of the user to delete")
+):
+    try:
+        # Get service role client for admin operations
+        supabase = await supabase_service.get_service_role_client()
+        
+        # Delete the user - note that this returns None on success
+        await supabase.auth.admin.delete_user(str(user_id))
+        
+        # If we reach here, the deletion was successful (no exception was thrown)
+        return {"message": "User deleted successfully", "id": str(user_id)}
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
