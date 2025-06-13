@@ -20,6 +20,7 @@ from src.routers.site_type_router import site_type_router
 from src.routers.market_status_router import market_status_router
 from src.routers.poi_router import poi_router
 from src.routers.user_profile_router import user_profile_router
+from src.routers.agent_router import agent_router
 
 
 app = FastAPI(
@@ -65,6 +66,7 @@ app.include_router(site_type_router, prefix="/api", dependencies=[Depends(get_cu
 app.include_router(market_status_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(poi_router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(poi_detail_router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(agent_router, prefix="/api", dependencies=[Depends(get_current_user)])
 
 # User profile routes (mixed auth requirements)
 app.include_router(user_profile_router, prefix="/api")

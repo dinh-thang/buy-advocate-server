@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends, Query
 from typing import List, Optional, Dict, Any
 from postgrest.exceptions import APIError
 
 from src.services.supabase_service import supabase_service
 from src.config import settings, logger
 from src.schemas.filter import FilterBase
+from src.middleware.auth import get_current_user
 from src.services.filter_service import (
     apply_distance_to_poi_filter, 
     apply_min_max_filter, 
@@ -209,3 +210,102 @@ async def get_properties(
                 }
             }
         raise
+
+
+@property_router.get("/user-properties")
+async def get_user_properties(
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(default=50, ge=1, le=50, description="Number of records per page, fixed at 50"),
+    current_user_id: str = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Get all properties for the current authenticated user with pagination"""
+    supabase = await supabase_service.client
+    
+    # Log pagination request
+    logger.info(f"📄 Received user properties request for user {current_user_id}, page {page} with page size {page_size}")
+        
+    # Calculate range for pagination (0-based for Supabase)
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+    
+    logger.info(f"📄 Fetching user {current_user_id} records {start} to {end}")
+    
+    try:
+        # Build query for user's properties
+        query = supabase.table(TABLE_NAME).select(
+            # PROPERTY LISTING DETAILS
+            "id",
+            "land_area_m2",
+            "days_on_market",
+            "listing_date",
+            "agent_name",
+            "agent_phone_number",
+            "description",
+            "property_images",
+            "asking_price",
+            "max_price_range",
+            "address",
+            "net_income",
+            "yield_percentage",
+            "sold_price",
+            "sold_on",
+            "lease_terms",
+            "user_id",
+
+            # FILTERS 
+            "property_type",
+            "category",
+            "area",
+            "zones",
+            "traffic_total",
+            "overlays",
+        ).eq("user_id", current_user_id)
+
+        # Get total count for the user's properties
+        count_query = supabase.table(TABLE_NAME).select("*", count="exact").eq("user_id", current_user_id)
+        count_response = await count_query.execute()
+        total_count = count_response.count if count_response.count is not None else 0
+        
+        # Ensure total_count is a valid number
+        if not isinstance(total_count, (int, float)) or total_count < 0:
+            total_count = 0
+
+        # Calculate total pages
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+        # Apply pagination to the data query
+        query = query.range(start, end)
+        
+        # Get paginated data
+        response = await query.execute()
+        returned_count = len(response.data) if response.data else 0
+        
+        logger.info(f"🏁 User properties - Total: {total_count:,} for user {current_user_id}")
+        logger.info(f"📄 PAGINATION - Page: {page}/{total_pages} | Items: {returned_count}/{page_size}")
+
+        return {
+            "data": response.data or [],
+            "pagination": {
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "current_page": page,
+                "page_size": page_size,
+                "has_next": page < total_pages,
+                "has_previous": page > 1
+            },
+            "user_id": current_user_id
+        }
+    except APIError as e:
+        logger.error(f"⚠️ Error fetching user properties for user {current_user_id}: {str(e)}")
+        return {
+            "data": [],
+            "pagination": {
+                "total_count": 0,
+                "total_pages": 0,
+                "current_page": page,
+                "page_size": page_size,
+                "has_next": False,
+                "has_previous": False
+            },
+            "user_id": current_user_id
+        }

@@ -28,5 +28,7 @@ class Settings:
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     PROPERTY_TABLE_NAME: str = os.getenv("PROPERTY_TABLE_NAME")
     X_API_KEY: str = os.getenv("X_API_KEY")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY")
+    SITE_URL: str = os.getenv("SITE_URL")
     
 settings = Settings()
